@@ -338,9 +338,12 @@
     function getAhSynth() {
       if (!ahSynth) {
         try {
-          ahSynth = new Tone.Synth({
+          ahSynth = new Tone.AMSynth({
+            harmonicity: 2,
             oscillator: { type: 'sine' },
-            envelope: { attack: 0.05, decay: 0.1, sustain: 0.6, release: 0.8 }
+            envelope: { attack: 0.08, decay: 0.2, sustain: 0.5, release: 1.2 },
+            modulation: { type: 'sine' },
+            modulationEnvelope: { attack: 0.1, decay: 0.2, sustain: 0.3, release: 0.8 }
           }).connect(reverb);
         } catch(_) {}
       }
@@ -555,7 +558,7 @@
                   const syn = getAhSynth();
                   if (syn) {
                     const ahNotes = ['A3','B3','C4','D4','E4','F4','G4','A4'];
-                    syn.triggerAttackRelease(ahNotes[Math.floor(Math.random()*ahNotes.length)], '0.3');
+                    syn.triggerAttackRelease(ahNotes[Math.floor(Math.random()*ahNotes.length)], '0.5');
                   }
                 } catch(_) {}
               }
@@ -824,85 +827,119 @@
     }
 
     function drawWalker(w) {
-      const { x, y, dir, step, color, umbrellaColor, hitTimer } = w;
-      const swing = Math.sin(step * 0.15);
-      const headShake = hitTimer > 0 ? (Math.random() * 4 - 2) : 0;
+      const x = w.x, y = w.groundY;
+      const s = w.step;
+      const swing = Math.sin(s * 0.15) * 8; // leg swing amplitude
 
       ctx.save();
-      // flip for direction: dir=1 faces right (default), dir=-1 flip
-      if (dir === -1) {
-        ctx.translate(x, 0);
+      // dir=1 → facing right (no flip), dir=-1 → flip horizontally
+      if (w.dir === -1) {
+        ctx.translate(x * 2, 0);
         ctx.scale(-1, 1);
-        ctx.translate(-x, 0);
       }
 
-      // umbrella (above head)
-      const ux = x, uy = y - 42;
+      // umbrella handle (hand → canopy top)
       ctx.beginPath();
-      ctx.arc(ux, uy, 18, Math.PI, 0);
+      ctx.moveTo(x + 4, y - 28);
+      ctx.lineTo(x + 4, y - 52);
+      ctx.strokeStyle = '#888';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // umbrella canopy (semicircle)
+      const ux = x + 4, uy = y - 52;
+      ctx.beginPath();
+      ctx.arc(ux, uy, 20, Math.PI, 0);
       ctx.closePath();
-      ctx.fillStyle = umbrellaColor + 'aa';
+      ctx.fillStyle = w.umbrellaColor;
       ctx.fill();
-      ctx.strokeStyle = '#555';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      // umbrella handle
-      ctx.beginPath();
-      ctx.moveTo(ux, uy);
-      ctx.lineTo(ux, uy + 22);
-      ctx.strokeStyle = '#555';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      // arm holding umbrella (right arm up)
-      ctx.beginPath();
-      ctx.moveTo(x + 4, y - 20);
-      ctx.lineTo(x + 2, y - 36);
-      ctx.strokeStyle = '#FFDAB9';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-
-      // arm swinging (left arm)
-      ctx.beginPath();
-      ctx.moveTo(x - 4, y - 20);
-      ctx.lineTo(x - 8 + swing * 4, y - 10 + swing * 3);
-      ctx.strokeStyle = '#FFDAB9';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-
-      // body (ellipse)
-      ctx.beginPath();
-      ctx.ellipse(x, y - 16, 7, 10, 0, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
-      ctx.strokeStyle = '#333';
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // legs
-      const leg1x = swing > 0 ? x - 6 : x + 2;
-      const leg2x = swing > 0 ? x + 6 : x - 2;
+      // coat / skirt (trapezoid, wide hem)
       ctx.beginPath();
-      ctx.moveTo(x, y - 6);
-      ctx.lineTo(leg1x, y + 10);
-      ctx.strokeStyle = '#555';
-      ctx.lineWidth = 2.5;
+      ctx.moveTo(x - 6, y - 28);
+      ctx.lineTo(x + 8, y - 28);
+      ctx.lineTo(x + 12, y - 8);
+      ctx.lineTo(x - 10, y - 8);
+      ctx.closePath();
+      ctx.fillStyle = w.color;
+      ctx.fill();
+
+      // legs (from hem)
+      const legY = y - 8;
+      // front leg
+      ctx.beginPath();
+      ctx.moveTo(x, legY);
+      ctx.lineTo(x + swing * 0.5, y + 2);
+      ctx.strokeStyle = '#FFDAB9';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
       ctx.stroke();
+      // back leg
       ctx.beginPath();
-      ctx.moveTo(x, y - 6);
-      ctx.lineTo(leg2x, y + 10);
-      ctx.strokeStyle = '#555';
+      ctx.moveTo(x + 2, legY);
+      ctx.lineTo(x - swing * 0.5 + 2, y + 2);
+      ctx.stroke();
+
+      // torso (small belly ellipse)
+      ctx.beginPath();
+      ctx.ellipse(x + 1, y - 32, 7, 9, 0, 0, Math.PI * 2);
+      ctx.fillStyle = w.color;
+      ctx.fill();
+
+      // umbrella arm (raised)
+      ctx.beginPath();
+      ctx.moveTo(x + 5, y - 36);
+      ctx.lineTo(x + 4, y - 28);
+      ctx.strokeStyle = '#FFDAB9';
       ctx.lineWidth = 2.5;
       ctx.stroke();
 
-      // head
+      // free arm (swings with walk)
       ctx.beginPath();
-      ctx.arc(x + headShake, y - 28, 7, 0, Math.PI * 2);
+      ctx.moveTo(x - 3, y - 36);
+      ctx.lineTo(x - 5 - swing * 0.3, y - 26);
+      ctx.stroke();
+
+      // head (big cute circle)
+      const headShake = w.hitTimer > 0 ? (Math.random() - 0.5) * 3 : 0;
+      ctx.beginPath();
+      ctx.arc(x + 1 + headShake, y - 46, 10, 0, Math.PI * 2);
       ctx.fillStyle = '#FFDAB9';
       ctx.fill();
       ctx.strokeStyle = '#333';
       ctx.lineWidth = 1;
       ctx.stroke();
+
+      // big eye (side profile — one eye)
+      ctx.beginPath();
+      ctx.arc(x + 6, y - 47, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#333';
+      ctx.fill();
+      // eye highlight
+      ctx.beginPath();
+      ctx.arc(x + 7, y - 48, 1, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+
+      // smile
+      ctx.beginPath();
+      ctx.arc(x + 6, y - 43, 2.5, 0.2, Math.PI - 0.2);
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // hair strands
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.moveTo(x - 2 + i * 3, y - 55);
+        ctx.lineTo(x - 3 + i * 3, y - 58);
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
 
       ctx.restore();
     }
