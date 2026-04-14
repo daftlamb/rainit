@@ -868,14 +868,14 @@
       // === 后腿（right leg，摆动相反）===
       ctx.save();
       ctx.translate(cx + bW*0.15, hipY - lRH*0.05);
-      ctx.rotate(-swing * 0.3);
+      ctx.rotate(-swing * 0.5);
       ctx.drawImage(walkerParts['leg_right'], -lW*0.5, -lRH*0.05, lW, lRH);
       ctx.restore();
 
       // === 后手臂（right arm，摆动相反）===
       ctx.save();
       ctx.translate(cx + bW*0.35, bodyTop + bH*0.15);
-      ctx.rotate(-swing * 0.35);
+      ctx.rotate(-swing * 0.45);
       ctx.drawImage(walkerParts['arm_right'], -aRW*0.5, 0, aRW, aRH);
       ctx.restore();
 
@@ -885,7 +885,7 @@
       // === 前腿（left leg，正向摆动）===
       ctx.save();
       ctx.translate(cx - bW*0.15, hipY - lLH*0.05);
-      ctx.rotate(swing * 0.3);
+      ctx.rotate(swing * 0.5);
       ctx.drawImage(walkerParts['leg_left'], -lW*0.5, -lLH*0.05, lW, lLH);
       ctx.restore();
 
