@@ -365,7 +365,7 @@
       const speed = 0.8 + Math.random() * 0.7;
       const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
       const uc = PALETTE[Math.floor(Math.random() * PALETTE.length)];
-      walker = { x, y: groundY, groundY, dir, speed, step: 0, color, umbrellaColor: uc, hitTimer: 0, state: 'walking', hasLooked: false, lookTimer: 0 };
+      walker = { x, y: groundY, groundY, dir, speed, speedCurrent: speed, step: 0, color, umbrellaColor: uc, hitTimer: 0, state: 'walking', hasLooked: false, lookTimer: 0 };
       console.log('walker spawned', walker);
     }
 
@@ -376,21 +376,28 @@
       }
       if (walker.hitTimer > 0) walker.hitTimer--;
       if (walker.state === 'looking') {
-        // 停止移动，倒计时
+        // 渐停：速度逐渐减到0
+        walker.speedCurrent = Math.max(0, walker.speedCurrent - walker.speed * 0.08);
+        walker.x += walker.speedCurrent * walker.dir;
+        if (walker.speedCurrent > 0) {
+          walker.step++; // 还在走就继续走路动画
+        }
         walker.lookTimer--;
         if (walker.lookTimer <= 0) {
           walker.state = 'walking';
+          walker.speedCurrent = walker.speed; // 恢复速度
           walker.hasLooked = true;
         }
       } else {
         // 正常走路
-        walker.x += walker.dir * walker.speed;
+        walker.speedCurrent = walker.speed;
+        walker.x += walker.speedCurrent * walker.dir;
         walker.step++;
         // 走到画面中央时触发一次抬头
         const centerX = window.innerWidth / 2;
         if (!walker.hasLooked && Math.abs(walker.x - centerX) < 10) {
           walker.state = 'looking';
-          walker.lookTimer = Math.floor(60 + Math.random() * 60);
+          walker.lookTimer = Math.floor(90 + Math.random() * 60); // 1.5~2.5秒
         }
       }
       // off-screen → remove, schedule next
@@ -878,14 +885,14 @@
       }
 
       const cx = x + shake;
-      // 问题2修复：脚底贴地，bodyTop 从地面往上算
-      const bodyTop = gY - bH - lLH * 0.15 - bounce + 2;
+      // 问题3修复：腿顶端在 gY-lH，脚底在 gY，人不陷入地面
+      const bodyTop = gY - lLH - bH * 0.85 - bounce;
 
       // === 后腿（right leg，摆动相反）===
       ctx.save();
-      ctx.translate(cx + bW*0.15, gY - lRH * 0.05);
+      ctx.translate(cx + bW*0.15, gY - lRH);
       ctx.rotate(-swing * 0.5);
-      ctx.drawImage(walkerParts['leg_right'], -lW*0.5, -lRH * 0.05, lW, lRH);
+      ctx.drawImage(walkerParts['leg_right'], -lW*0.5, 0, lW, lRH);
       ctx.restore();
 
       // === 后手臂（right arm，摆动相反）===
@@ -900,9 +907,9 @@
 
       // === 前腿（left leg，正向摆动）===
       ctx.save();
-      ctx.translate(cx - bW*0.15, gY - lLH * 0.05);
+      ctx.translate(cx - bW*0.15, gY - lLH);
       ctx.rotate(swing * 0.5);
-      ctx.drawImage(walkerParts['leg_left'], -lW*0.5, -lLH * 0.05, lW, lLH);
+      ctx.drawImage(walkerParts['leg_left'], -lW*0.5, 0, lW, lLH);
       ctx.restore();
 
       // === 前手臂（left arm，举伞，轻微摆）===
@@ -914,16 +921,16 @@
       ctx.drawImage(walkerParts['arm_left'], -aLW*0.5, 0, aLW, aLH);
       ctx.restore();
 
-      // 问题1修复：以伞柄底端为锚点，对齐到左臂顶端
+      // 问题1修复：以伞底部居中为 pivot，对齐到手臂底端（手的位置）
       const armAngle = swing * 0.1 - 0.2;
-      const armTopX = armPivotX - Math.sin(armAngle) * aLH * 0.85;
-      const armTopY = armPivotY - Math.cos(armAngle) * aLH * 0.85;
-      const handleOffX = 88.12 * sc;
-      const handleOffY = 166.33 * sc;
+      const handX = armPivotX + Math.sin(armAngle) * aLH * 0.9;
+      const handY = armPivotY + Math.cos(armAngle) * aLH * 0.9;
+      const umbPivotOffX = (179.23 / 2) * sc;
+      const umbPivotOffY = 166.33 * sc;
       ctx.save();
-      ctx.translate(armTopX, armTopY);
-      ctx.rotate(armAngle);
-      ctx.drawImage(walkerParts['umbrella'], -handleOffX, -handleOffY, uW, uH);
+      ctx.translate(handX, handY);
+      ctx.rotate(armAngle + swing * 0.05);
+      ctx.drawImage(walkerParts['umbrella'], -umbPivotOffX, -umbPivotOffY, uW, uH);
       ctx.restore();
 
       // === 头（问题3：looking 状态时抬头）===
