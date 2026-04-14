@@ -905,15 +905,17 @@
       // === 头 ===
       ctx.drawImage(walkerParts['head'], cx - hW*0.5 + shake, bodyTop - hH*0.8 - bounce*0.3, hW, hH);
 
-      // === 伞（最后绘制，最高层；handX +5 向前）===
-      const armAngle = swing * 0.1 - 0.2;
-      const handX = armPivotX + Math.sin(armAngle) * aLH * 0.9 + 5;
-      const handY = armPivotY + Math.cos(armAngle) * aLH * 0.9;
+      // === 伞（最后绘制，最高层；绑定到 arm_right 手端，向上 5px 向前 8px）===
+      const armRAngle = -swing * 0.35;
+      const armRPivotX = cx + bW*0.35;
+      const armRPivotY = bodyTop + bH*0.15;
+      const handRX = armRPivotX + Math.sin(armRAngle) * aRH * 0.9 + 8;
+      const handRY = armRPivotY + Math.cos(armRAngle) * aRH * 0.9 - 5;
       const umbPivotOffX = (179.23 / 2) * sc;
       const umbPivotOffY = 166.33 * sc;
       ctx.save();
-      ctx.translate(handX, handY);
-      ctx.rotate(armAngle + swing * 0.05);
+      ctx.translate(handRX, handRY);
+      ctx.rotate(armRAngle + swing * 0.05);
       ctx.drawImage(walkerParts['umbrella'], -umbPivotOffX, -umbPivotOffY, uW, uH);
       ctx.restore();
 
