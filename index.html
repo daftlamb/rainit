@@ -342,6 +342,18 @@
     });
     let walkerNextSpawn = Date.now() + (3 + Math.random() * 2) * 1000;
 
+    // Tone.js Sampler for walker hit sound with random pitch
+    const hitSampler = new Tone.Sampler({
+      urls: { "A4": "https://tonejs.github.io/audio/salamander/A4.mp3" },
+      release: 1,
+    }).toDestination();
+
+    function playHitSound() {
+      const notes = ["C3","D3","E3","F3","G3","A3","B3","C4","D4","E4","F4","G4","A4","B4","C5"];
+      const note = notes[Math.floor(Math.random() * notes.length)];
+      try { hitSampler.triggerAttackRelease(note, "8n"); } catch(_) {}
+    }
+
     // ahSynth for body hit sound (lazy-init after Tone.start)
     let ahSynth = null;
     function getAhSynth() {
@@ -406,7 +418,7 @@
         walker.active = false;
         gsap.killTweensOf(walker.angles);
         walker = null;
-        walkerNextSpawn = Date.now() + (15 + Math.random() * 10) * 1000;
+        walkerNextSpawn = Date.now() + (40 + Math.random() * 25) * 1000;
       }
     }
 
@@ -589,13 +601,7 @@
               const bx = walker.x, by = walker.y - 28;
               if (Math.abs(rx - bx) < 7 && ry > by - 7 && ry < by + 24) {
                 walker.hitTimer = 10;
-                try {
-                  const syn = getAhSynth();
-                  if (syn) {
-                    const ahNotes = ['A3','B3','C4','D4','E4','F4','G4','A4'];
-                    syn.triggerAttackRelease(ahNotes[Math.floor(Math.random()*ahNotes.length)], '0.5');
-                  }
-                } catch(_) {}
+                playHitSound();
               }
             }
           }
