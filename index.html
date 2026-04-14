@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Rain It</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700&family=Noto+Sans+SC:wght@700&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -77,37 +78,70 @@
       square:   new Tone.Synth({ oscillator: { type: 'square'   }, envelope: { attack: 0.01, decay: 0.3, sustain: 0, release: 0.5 } }).toDestination(),
       triangle: new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.01, decay: 0.3, sustain: 0, release: 0.5 } }).toDestination(),
     };
-    // Reduce volume a bit
     Object.values(synths).forEach(s => s.volume.value = -12);
+
+    // PluckSynth for latin text, MetalSynth for chinese text
+    const pluckSynth = new Tone.PluckSynth().toDestination();
+    pluckSynth.volume.value = -8;
+    const metalSynth = new Tone.MetalSynth({ frequency: 200, envelope: { attack: 0.001, decay: 0.4, release: 0.2 }, harmonicity: 5.1, modulationIndex: 32, resonance: 4000, octaves: 1.5 }).toDestination();
+    metalSynth.volume.value = -14;
 
     // Scale notes C4–C6
     const NOTES = ['C4','D4','E4','F4','G4','A4','B4','C5','D5','E5','F5','G5','A5','B5','C6'];
 
     function noteForBody(body) {
       const groundY = canvas.height - 40;
-      const maxH = groundY - 60; // usable height
+      const maxH = groundY - 60;
       const t = Math.max(0, Math.min(1, 1 - (body.position.y / maxH)));
       const idx = Math.round(t * (NOTES.length - 1));
       return NOTES[idx];
     }
 
-    // ── Container tracking ─────────────────────────────────────────────────
-    const containers = []; // { body, shape }
+    // ── Container / text object tracking ──────────────────────────────────
+    const containers = []; // { body, shape } or { body, type:'text', char, font, color }
     const raindrops  = []; // { body }
     let shapeIndex = 0;
-    const SHAPES = ['circle', 'square', 'triangle'];
+    const SHAPES  = ['circle', 'square', 'triangle'];
     const PALETTE = ['#FF3366','#FF6B00','#FFD700','#00FF88','#00CFFF','#7B2FFF','#FF2FD4','#FF4444'];
+    const HAN_CHARS = '雨水风云山石木火土金';
 
     function addContainer(x, y) {
+      const safeY = Math.min(y, canvas.height - 100);
+      const color  = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+      const alpha  = (0.7 + Math.random() * 0.2).toFixed(2);
+
+      // 40% chance: text object
+      if (Math.random() < 0.4) {
+        const isHan  = Math.random() < 0.3;
+        const char   = isHan
+          ? HAN_CHARS[Math.floor(Math.random() * HAN_CHARS.length)]
+          : String.fromCharCode(65 + Math.floor(Math.random() * 26));
+        const font   = isHan ? 'Noto Sans SC' : 'Outfit';
+        const fontSize = 40 + Math.floor(Math.random() * 41); // 40–80
+        // bounding box approx: fontSize wide, fontSize tall
+        const bw = fontSize * 0.85;
+        const bh = fontSize * 1.0;
+        const body = Bodies.rectangle(x, safeY, bw, bh, {
+          restitution: 0.25, friction: 0.5, label: 'container',
+          collisionFilter: { category: 0x0004, mask: 0x0001 | 0x0002 | 0x0004 }
+        });
+        body._type     = 'text';
+        body._char     = char;
+        body._font     = font;
+        body._fontSize = fontSize;
+        body._color    = color;
+        body._alpha    = alpha;
+        body._isHan    = isHan;
+        body._size     = Math.max(bw, bh);
+        World.add(engine.world, body);
+        containers.push({ body, type: 'text', char, font, color });
+        return;
+      }
+
+      // 60% chance: shape object
       const shape = SHAPES[shapeIndex % SHAPES.length];
       shapeIndex++;
-      // Random size: 60–140px (radius 30–70 for circle)
       const size = 60 + Math.random() * 80;
-      // Clamp y so objects don't spawn below ground
-      const safeY = Math.min(y, canvas.height - 100);
-      // Random color with opacity 0.7–0.9
-      const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
-      const alpha = (0.7 + Math.random() * 0.2).toFixed(2);
       let body;
       if (shape === 'circle') {
         body = Bodies.circle(x, safeY, size / 2, {
@@ -120,6 +154,7 @@
           collisionFilter: { category: 0x0004, mask: 0x0001 | 0x0002 | 0x0004 }
         });
       }
+      body._type  = 'shape';
       body._shape = shape;
       body._size  = size;
       body._color = color;
@@ -128,42 +163,105 @@
       containers.push({ body, shape, size });
     }
 
+    // ── Storm mode ─────────────────────────────────────────────────────────
+    let stormMode = false;
+
+    function scheduleStorm() {
+      const delay = (8 + Math.random() * 7) * 1000; // 8–15s
+      setTimeout(() => {
+        stormMode = true;
+        const duration = (3 + Math.random() * 2) * 1000; // 3–5s
+        setTimeout(() => {
+          stormMode = false;
+          scheduleStorm();
+        }, duration);
+      }, delay);
+    }
+    scheduleStorm();
+
+    // ── Wind force ─────────────────────────────────────────────────────────
+    let windForce = 0;
+
+    function scheduleWind() {
+      const delay = (5 + Math.random() * 5) * 1000; // 5–10s
+      setTimeout(() => {
+        windForce = (Math.random() * 0.01) - 0.005; // -0.005 ~ 0.005
+        scheduleWind();
+      }, delay);
+    }
+    scheduleWind();
+
+    // Apply wind every physics tick
+    Events.on(engine, 'beforeUpdate', () => {
+      if (windForce === 0) return;
+      Composite.allBodies(engine.world).forEach(body => {
+        if (!body.isStatic) {
+          Body.applyForce(body, body.position, { x: windForce * body.mass, y: 0 });
+        }
+      });
+    });
+
     // ── Rain spawner ───────────────────────────────────────────────────────
     function spawnRain() {
       const x = Math.random() * canvas.width;
-      // Use default collision filter so rain collides with everything (ground + containers)
-      const drop = Bodies.rectangle(x, -10, 2, 8, {
+      const w = stormMode ? 3 : 2;
+      const drop = Bodies.rectangle(x, -10, w, 8, {
         restitution: 0, friction: 0, frictionAir: 0.01,
         label: 'rain'
       });
       drop._born = Date.now();
+      // Wind affects initial horizontal velocity
+      if (windForce !== 0) {
+        Body.setVelocity(drop, { x: windForce * 80, y: 0 });
+      }
       World.add(engine.world, drop);
       raindrops.push({ body: drop });
 
-      const delay = 300 + Math.random() * 300;
+      const delay = stormMode
+        ? 50 + Math.random() * 50
+        : 300 + Math.random() * 300;
       setTimeout(spawnRain, delay);
     }
 
-    // ── Chord mechanism ────────────────────────────────────────────────────
-    let pendingNotes = []; // { note, shape }
-    let chordTimer = null;
+    // ── Chord / note mechanism ─────────────────────────────────────────────
+    let pendingNotes = [];
+    let chordTimer   = null;
 
     function flushChord() {
       const notes = pendingNotes.splice(0);
-      notes.forEach(({ note, shape }) => {
-        try { synths[shape].triggerAttackRelease(note, '16n'); } catch(_) {}
+      notes.forEach(({ note, shape, textType, isStorm }) => {
+        try {
+          if (textType === 'han') {
+            metalSynth.triggerAttackRelease('16n');
+          } else if (textType === 'latin') {
+            pluckSynth.triggerAttackRelease(note);
+          } else {
+            // shape synth
+            const s = synths[shape] || synths.circle;
+            s.triggerAttackRelease(note, '16n');
+            // storm percussion
+            if (isStorm) {
+              const r = Math.random();
+              if (r < 0.3) {
+                new Tone.MembraneSynth().toDestination().triggerAttackRelease('C1', '8n');
+              } else if (r < 0.5) {
+                new Tone.MetalSynth({ frequency: 400, envelope: { attack: 0.001, decay: 0.1 } }).toDestination().triggerAttackRelease('16n');
+              }
+            }
+          }
+        } catch(_) {}
       });
       chordTimer = null;
     }
 
-    function scheduleNote(note, shape) {
-      pendingNotes.push({ note, shape });
+    function scheduleNote(note, shape, textType) {
+      pendingNotes.push({ note, shape, textType, isStorm: stormMode });
       if (chordTimer) clearTimeout(chordTimer);
       chordTimer = setTimeout(flushChord, 100);
     }
 
     // ── Collision: rain hits container → play note ─────────────────────────
-    const recentHits = new WeakMap(); // throttle per container
+    const recentHits = new WeakMap();
 
     Events.on(engine, 'collisionStart', e => {
       e.pairs.forEach(pair => {
@@ -174,15 +272,18 @@
           rain = pair.bodyB; container = pair.bodyA;
         }
         if (rain && container) {
-          const now = Date.now();
+          const now  = Date.now();
           const last = recentHits.get(container) || 0;
           if (now - last > 80) {
             recentHits.set(container, now);
-            const note  = noteForBody(container);
-            const shape = container._shape || 'circle';
-            scheduleNote(note, shape);
+            const note = noteForBody(container);
+            if (container._type === 'text') {
+              scheduleNote(note, null, container._isHan ? 'han' : 'latin');
+            } else {
+              const shape = container._shape || 'circle';
+              scheduleNote(note, shape, null);
+            }
           }
-          // remove raindrop
           World.remove(engine.world, rain);
           const idx = raindrops.findIndex(r => r.body === rain);
           if (idx !== -1) raindrops.splice(idx, 1);
@@ -209,35 +310,44 @@
 
     // ── Rendering ──────────────────────────────────────────────────────────
     function drawBody(body) {
-      const pos = body.position;
+      const pos   = body.position;
       const angle = body.angle;
-      const shape = body._shape;
-      const size  = body._size || 8;
       const color = body._color || '#47a8e8';
       const alpha = body._alpha || 0.8;
 
       ctx.save();
       ctx.translate(pos.x, pos.y);
       ctx.rotate(angle);
-      ctx.beginPath();
+      ctx.globalAlpha = parseFloat(alpha);
 
-      if (shape === 'circle') {
-        ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
-      } else if (shape === 'square') {
-        const h = size / 2;
-        ctx.rect(-h, -h, size, size);
-      } else if (shape === 'triangle') {
-        const r = size / 2;
-        ctx.moveTo(0, -r);
-        ctx.lineTo( r * 0.866,  r * 0.5);
-        ctx.lineTo(-r * 0.866,  r * 0.5);
-        ctx.closePath();
+      if (body._type === 'text') {
+        const fs   = body._fontSize || 48;
+        const font = body._font || 'Outfit';
+        ctx.font      = `bold ${fs}px '${font}', sans-serif`;
+        ctx.fillStyle = color;
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(body._char, 0, 0);
+      } else {
+        const shape = body._shape;
+        const size  = body._size || 8;
+        ctx.beginPath();
+        if (shape === 'circle') {
+          ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
+        } else if (shape === 'square') {
+          const h = size / 2;
+          ctx.rect(-h, -h, size, size);
+        } else if (shape === 'triangle') {
+          const r = size / 2;
+          ctx.moveTo(0, -r);
+          ctx.lineTo( r * 0.866,  r * 0.5);
+          ctx.lineTo(-r * 0.866,  r * 0.5);
+          ctx.closePath();
+        }
+        ctx.fillStyle = color;
+        ctx.fill();
       }
 
-      // Fill with color + alpha, no stroke
-      ctx.globalAlpha = parseFloat(alpha);
-      ctx.fillStyle = color;
-      ctx.fill();
       ctx.globalAlpha = 1;
       ctx.restore();
     }
@@ -245,11 +355,40 @@
     function drawRain(body) {
       const pos = body.position;
       ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = stormMode ? 'rgba(180,220,255,0.7)' : 'rgba(255,255,255,0.55)';
+      ctx.lineWidth   = stormMode ? 2.5 : 1.5;
       ctx.beginPath();
       ctx.moveTo(pos.x, pos.y - 4);
       ctx.lineTo(pos.x, pos.y + 4);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawWindIndicator() {
+      if (Math.abs(windForce) < 0.0002) return;
+      const cx     = canvas.width / 2;
+      const cy     = 22;
+      const maxLen = 60;
+      const len    = Math.abs(windForce) / 0.005 * maxLen;
+      const dir    = windForce > 0 ? 1 : -1;
+      const x1     = cx - dir * len * 0.5;
+      const x2     = cx + dir * len * 0.5;
+      const opacity = 0.3 + Math.abs(windForce) / 0.005 * 0.4;
+
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,255,255,${opacity.toFixed(2)})`;
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.moveTo(x1, cy);
+      ctx.lineTo(x2, cy);
+      ctx.stroke();
+      // arrowhead
+      const aw = 5;
+      ctx.beginPath();
+      ctx.moveTo(x2, cy);
+      ctx.lineTo(x2 - dir * aw, cy - aw * 0.6);
+      ctx.moveTo(x2, cy);
+      ctx.lineTo(x2 - dir * aw, cy + aw * 0.6);
       ctx.stroke();
       ctx.restore();
     }
@@ -260,13 +399,16 @@
       // Ground line
       const gy = canvas.height - 40;
       ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-      ctx.lineWidth = 1;
+      ctx.lineWidth   = 1;
       ctx.beginPath();
       ctx.moveTo(0, gy);
       ctx.lineTo(canvas.width, gy);
       ctx.stroke();
 
-      // Containers
+      // Wind indicator
+      drawWindIndicator();
+
+      // Containers / text objects
       containers.forEach(c => drawBody(c.body));
 
       // Raindrops
@@ -275,7 +417,7 @@
       requestAnimationFrame(loop);
     }
 
-    // ── Cleanup stale raindrops (safety net) ──────────────────────────────
+    // ── Cleanup stale raindrops ────────────────────────────────────────────
     setInterval(() => {
       const now = Date.now();
       for (let i = raindrops.length - 1; i >= 0; i--) {
