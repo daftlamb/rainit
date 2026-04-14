@@ -332,8 +332,10 @@
     // ── Walker (umbrella person) ───────────────────────────────────────────
     let walker = null;
     const walkerImg = new Image();
+    let walkerImgReady = false;
+    walkerImg.onload = () => { walkerImgReady = true; };
     walkerImg.src = 'rainman.svg';
-    let walkerNextSpawn = Date.now() + (15 + Math.random() * 15) * 1000;
+    let walkerNextSpawn = Date.now() + (3 + Math.random() * 2) * 1000;
 
     // ahSynth for body hit sound (lazy-init after Tone.start)
     let ahSynth = null;
@@ -359,7 +361,8 @@
       const speed = 0.8 + Math.random() * 0.7;
       const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
       const uc = PALETTE[Math.floor(Math.random() * PALETTE.length)];
-      walker = { x, y: groundY, dir, speed, step: 0, color, umbrellaColor: uc, hitTimer: 0 };
+      walker = { x, y: groundY, groundY, dir, speed, step: 0, color, umbrellaColor: uc, hitTimer: 0 };
+      console.log('walker spawned', walker);
     }
 
     function updateWalker() {
@@ -374,7 +377,7 @@
       if ((walker.dir === 1 && walker.x > window.innerWidth + 50) ||
           (walker.dir === -1 && walker.x < -50)) {
         walker = null;
-        walkerNextSpawn = Date.now() + (15 + Math.random() * 15) * 1000;
+        walkerNextSpawn = Date.now() + (15 + Math.random() * 10) * 1000;
       }
     }
 
@@ -829,7 +832,7 @@
     }
 
     function drawWalker(w) {
-      if (!walkerImg.complete) return;
+      if (!walkerImgReady) return;
 
       const groundY = w.groundY;
       // SVG original size 219.77 x 326.68, scale to height ~80px
