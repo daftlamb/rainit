@@ -914,13 +914,13 @@
       ctx.restore();
 
       // 前手臂（arm_left，举伞）
-      const armPivotX = cx - bW*0.3 - 8;
+      const armPivotX = cx - bW*0.3;
       const armPivotY = bodyTop + bH*0.1;
       const armAngle = w.angles.armL;
       ctx.save();
       ctx.translate(armPivotX, armPivotY);
       ctx.rotate(armAngle);
-      ctx.drawImage(walkerParts['arm_left'], -aLW*0.5, -aLH*0.536, aLW, aLH);
+      ctx.drawImage(walkerParts['arm_left'], -aLW*0.2735, -aLH*0.537, aLW, aLH);
       ctx.restore();
 
       // 头
