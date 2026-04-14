@@ -61,8 +61,8 @@
       canvas.width, 20,
       { isStatic: true, label: 'ground', friction: 0.8 }
     );
-    const wallL = Bodies.rectangle(-25, canvas.height / 2, 50, canvas.height * 2, { isStatic: true, label: 'wall', collisionFilter: { category: 0x0001, mask: 0x0002 | 0x0004 } });
-    const wallR = Bodies.rectangle(canvas.width + 25, canvas.height / 2, 50, canvas.height * 2, { isStatic: true, label: 'wall', collisionFilter: { category: 0x0001, mask: 0x0002 | 0x0004 } });
+    const wallL = Bodies.rectangle(-25, canvas.height / 2, 50, canvas.height * 2, { isStatic: true, label: 'wall' });
+    const wallR = Bodies.rectangle(canvas.width + 25, canvas.height / 2, 50, canvas.height * 2, { isStatic: true, label: 'wall' });
     World.add(engine.world, [ground, wallL, wallR]);
 
     window.addEventListener('resize', () => {
@@ -96,20 +96,34 @@
     const raindrops  = []; // { body }
     let shapeIndex = 0;
     const SHAPES = ['circle', 'square', 'triangle'];
+    const PALETTE = ['#e8c547','#e87d47','#47a8e8','#47e8a8','#e847a8','#a847e8','#e84747','#47e847'];
 
     function addContainer(x, y) {
       const shape = SHAPES[shapeIndex % SHAPES.length];
       shapeIndex++;
-      const size = 44 + Math.random() * 16; // 44–60px
+      // Random size: 30–70px (radius 15–35 for circle)
+      const size = 30 + Math.random() * 40;
+      // Clamp y so objects don't spawn below ground
+      const safeY = Math.min(y, canvas.height - 100);
+      // Random color with opacity 0.7–0.9
+      const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+      const alpha = (0.7 + Math.random() * 0.2).toFixed(2);
       let body;
       if (shape === 'circle') {
-        body = Bodies.circle(x, y, size / 2, { restitution: 0.2, friction: 0.6, label: 'container' });
+        body = Bodies.circle(x, safeY, size / 2, {
+          restitution: 0.2, friction: 0.6, label: 'container',
+          collisionFilter: { category: 0x0004, mask: 0x0001 | 0x0002 | 0x0004 }
+        });
       } else {
-        // square and triangle both use rectangle physics
-        body = Bodies.rectangle(x, y, size, size, { restitution: 0.2, friction: 0.6, label: 'container' });
+        body = Bodies.rectangle(x, safeY, size, size, {
+          restitution: 0.2, friction: 0.6, label: 'container',
+          collisionFilter: { category: 0x0004, mask: 0x0001 | 0x0002 | 0x0004 }
+        });
       }
       body._shape = shape;
       body._size  = size;
+      body._color = color;
+      body._alpha = alpha;
       World.add(engine.world, body);
       containers.push({ body, shape, size });
     }
@@ -117,10 +131,10 @@
     // ── Rain spawner ───────────────────────────────────────────────────────
     function spawnRain() {
       const x = Math.random() * canvas.width;
+      // Use default collision filter so rain collides with everything (ground + containers)
       const drop = Bodies.rectangle(x, -10, 2, 8, {
         restitution: 0, friction: 0, frictionAir: 0.01,
-        label: 'rain',
-        collisionFilter: { category: 0x0002, mask: 0x0001 | 0x0004 }
+        label: 'rain'
       });
       drop._born = Date.now();
       World.add(engine.world, drop);
@@ -129,9 +143,6 @@
       const delay = 300 + Math.random() * 300;
       setTimeout(spawnRain, delay);
     }
-
-    // Assign collision categories
-    ground.collisionFilter = { category: 0x0001, mask: 0x0002 | 0x0004 };
 
     // ── Collision: rain hits container → play note ─────────────────────────
     const recentHits = new WeakMap(); // throttle per container
@@ -184,12 +195,12 @@
       const angle = body.angle;
       const shape = body._shape;
       const size  = body._size || 8;
+      const color = body._color || '#47a8e8';
+      const alpha = body._alpha || 0.8;
 
       ctx.save();
       ctx.translate(pos.x, pos.y);
       ctx.rotate(angle);
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-      ctx.lineWidth = 1.5;
       ctx.beginPath();
 
       if (shape === 'circle') {
@@ -204,6 +215,14 @@
         ctx.lineTo(-r * 0.866,  r * 0.5);
         ctx.closePath();
       }
+
+      // Fill with color + alpha
+      ctx.globalAlpha = parseFloat(alpha);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
       ctx.stroke();
       ctx.restore();
     }
@@ -252,17 +271,6 @@
         }
       }
     }, 2000);
-
-    // ── Container collision filter ─────────────────────────────────────────
-    // containers need to collide with rain (0x0002) and each other + ground (0x0001)
-    // We patch addContainer to set filters after creation
-    const _origAdd = addContainer;
-    // Override: set collision filter on new containers
-    Events.on(engine, 'afterAdd', e => {
-      if (e.object && e.object.label === 'container') {
-        e.object.collisionFilter = { category: 0x0004, mask: 0x0001 | 0x0002 | 0x0004 };
-      }
-    });
 
     // ── Start ──────────────────────────────────────────────────────────────
     spawnRain();
