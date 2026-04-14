@@ -466,49 +466,52 @@
       ctx.restore();
     }
 
-    // [Change 1] Simplified static grass — no sway, pre-computed offsets
+    // Plant rendering: wind sway, round leaf tips, separate flower color
     function drawPlant(plant) {
       const { x, groundY, type, color, height, stemOffsets, growProgress } = plant;
       const progress = Math.min(growProgress, 1);
       const h = height * progress;
+      const swayX = windForce * height * 80;
       ctx.save();
       if (type === 'grass') {
         stemOffsets.forEach(off => {
-          // Straight or slightly curved stem
+          const tipX = x + off.tx + swayX;
+          const tipY = groundY - h;
+          // Curved stem with wind sway
           ctx.beginPath();
           ctx.moveTo(x, groundY);
           ctx.quadraticCurveTo(
-            x + off.cx, groundY - h * 0.55,
-            x + off.tx, groundY - h
+            x + off.cx + swayX * 0.5, groundY - h * 0.55,
+            tipX, tipY
           );
           ctx.strokeStyle = '#7FD47F';
           ctx.lineWidth = 1.5;
           ctx.stroke();
-          // Small leaf triangle at tip
+          // Round leaf tip (circle instead of triangle)
           if (progress > 0.5) {
-            const tx = x + off.tx;
-            const ty = groundY - h;
             ctx.beginPath();
-            ctx.moveTo(tx, ty);
-            ctx.lineTo(tx + 5, ty + 8);
-            ctx.lineTo(tx - 5, ty + 8);
-            ctx.closePath();
+            ctx.arc(tipX, tipY, 4, 0, Math.PI * 2);
             ctx.fillStyle = '#7FD47F';
             ctx.fill();
           }
         });
       } else {
-        // Flower: single straight stem
+        // Flower: curved stem with wind sway
+        const tipX = x + swayX;
+        const tipY = groundY - h;
         ctx.beginPath();
         ctx.moveTo(x, groundY);
-        ctx.lineTo(x, groundY - h);
+        ctx.quadraticCurveTo(
+          x + swayX * 0.5, groundY - h * 0.5,
+          tipX, tipY
+        );
         ctx.strokeStyle = '#7FD47F';
         ctx.lineWidth = 1.5;
         ctx.stroke();
-        // Flower head after 80% growth
+        // Flower head at stem tip, using plant.color (not stem green)
         if (progress > 0.8) {
           ctx.beginPath();
-          ctx.arc(x, groundY - h, 8, 0, Math.PI * 2);
+          ctx.arc(tipX, tipY, 8, 0, Math.PI * 2);
           ctx.fillStyle = color;
           ctx.fill();
         }
