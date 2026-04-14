@@ -852,7 +852,7 @@
       const hW = 50.12*sc, hH = 50.12*sc;    // head ~16 x 16
       const aLW = 45.1*sc, aLH = 105.59*sc;  // arm_left ~14.4 x 33.8
       const aRW = 54.21*sc,aRH = 99.55*sc;   // arm_right ~17.3 x 31.9
-      const lW = 43.05*sc, lH = 125.76*sc;   // leg ~13.8 x 35.9
+      const lLH = 145.29*sc, lRH = 145.33*sc, lW = 43.05*sc;   // leg ~13.8 x 35.9
       const uW = 179.23*sc,uH = 166.33*sc;   // umbrella ~57.4 x 53.2
 
       ctx.save();
@@ -862,14 +862,14 @@
       }
 
       const cx = x + shake;
-      const bodyTop = gY - bH - bounce;
+      const bodyTop = gY - bH - bounce + 2;
       const hipY = gY; // 脚底
 
       // === 后腿（right leg，摆动相反）===
       ctx.save();
-      ctx.translate(cx + bW*0.15, hipY - lH*0.05);
+      ctx.translate(cx + bW*0.15, hipY - lRH*0.05);
       ctx.rotate(-swing * 0.3);
-      ctx.drawImage(walkerParts['leg_right'], -lW*0.5, -lH*0.05, lW, lH);
+      ctx.drawImage(walkerParts['leg_right'], -lW*0.5, -lRH*0.05, lW, lRH);
       ctx.restore();
 
       // === 后手臂（right arm，摆动相反）===
@@ -884,9 +884,9 @@
 
       // === 前腿（left leg，正向摆动）===
       ctx.save();
-      ctx.translate(cx - bW*0.15, hipY - lH*0.05);
+      ctx.translate(cx - bW*0.15, hipY - lLH*0.05);
       ctx.rotate(swing * 0.3);
-      ctx.drawImage(walkerParts['leg_left'], -lW*0.5, -lH*0.05, lW, lH);
+      ctx.drawImage(walkerParts['leg_left'], -lW*0.5, -lLH*0.05, lW, lLH);
       ctx.restore();
 
       // === 前手臂（left arm，举伞，轻微摆）===
@@ -898,12 +898,13 @@
       ctx.drawImage(walkerParts['arm_left'], -aLW*0.5, 0, aLW, aLH);
       ctx.restore();
 
-      // === 伞（跟随左臂顶端）===
-      const umbX = armPivotX + Math.sin(swing*0.1-0.2) * aLH * 0.8;
-      const umbY = armPivotY - uH*0.85 - bounce*0.5;
+      // 伞跟随左臂顶端
+      const armAngle = swing * 0.1 - 0.2;
+      const armTopX = armPivotX + Math.sin(armAngle) * aLH * 0.9;
+      const armTopY = armPivotY + Math.cos(armAngle) * aLH * 0.9;
       ctx.save();
-      ctx.translate(umbX, umbY);
-      ctx.rotate(swing * 0.05);
+      ctx.translate(armTopX, armTopY - uH * 0.75);
+      ctx.rotate(armAngle + swing * 0.05);
       ctx.drawImage(walkerParts['umbrella'], -uW*0.5, 0, uW, uH);
       ctx.restore();
 
