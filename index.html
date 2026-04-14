@@ -333,7 +333,7 @@
     // ── Walker (umbrella person) ───────────────────────────────────────────
     let walker = null;
     const walkerParts = {};
-    const walkerPartNames = ['body','head','arm_left','arm_right','leg_left','leg_right','umbrella'];
+    const walkerPartNames = ['body','head','arm_left','arm_right','leg_left','leg_right'];
     let walkerPartsLoaded = 0;
     walkerPartNames.forEach(name => {
       walkerParts[name] = new Image();
@@ -872,10 +872,9 @@
 
       const bW = 55.5*sc,  bH = 118.35*sc;
       const hW = 50.12*sc, hH = 50.12*sc;
-      const aLW = 45.1*sc, aLH = 105.59*sc;
+      const aLW = 179.22*sc, aLH = 214.49*sc;
       const aRW = 54.21*sc, aRH = 99.55*sc;
       const lLH = 145.29*sc, lRH = 145.33*sc, lW = 43.05*sc;
-      const uW = 179.23*sc, uH = 166.33*sc;
 
       ctx.save();
       if (w.dir === -1) {
@@ -921,22 +920,12 @@
       ctx.save();
       ctx.translate(armPivotX, armPivotY);
       ctx.rotate(armAngle);
-      ctx.drawImage(walkerParts['arm_left'], -aLW*0.5, 0, aLW, aLH);
+      ctx.drawImage(walkerParts['arm_left'], -aLW*0.5, -aLH*0.45, aLW, aLH);
       ctx.restore();
 
       // 头
       ctx.drawImage(walkerParts['head'], cx - hW*0.5 + shake, bodyTop - hH*0.8, hW, hH);
 
-      // 伞（伞柄底端锚定到手端）
-      const umbHandleX = 88.12 * sc;
-      const umbHandleY = 166.33 * sc;
-      const handX = armPivotX + Math.sin(armAngle) * aLH;
-      const handY = armPivotY + Math.cos(armAngle) * aLH;
-      ctx.save();
-      ctx.translate(handX, handY);
-      ctx.rotate(armAngle);
-      ctx.drawImage(walkerParts['umbrella'], -umbHandleX, -umbHandleY, uW, uH);
-      ctx.restore();
 
       ctx.restore();
       if (w.hitTimer > 0) w.hitTimer--;
