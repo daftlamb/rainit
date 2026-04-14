@@ -331,6 +331,8 @@
 
     // ── Walker (umbrella person) ───────────────────────────────────────────
     let walker = null;
+    const walkerImg = new Image();
+    walkerImg.src = 'rainman.svg';
     let walkerNextSpawn = Date.now() + (15 + Math.random() * 15) * 1000;
 
     // ahSynth for body hit sound (lazy-init after Tone.start)
@@ -537,9 +539,9 @@
           if (walker) {
             const rx = rain2.position.x, ry = rain2.position.y;
             // umbrella center
-            const ux = walker.x, uy = walker.y - 42;
+            const ux = walker.x, uy = walker.groundY - 80; // umbrella top (SVG scaled)
             const distU = Math.hypot(rx - ux, ry - uy);
-            if (distU < 20) {
+            if (distU < 25) {
               // rain hit umbrella → pluck note + splashes
               try {
                 const midi = currentScale[Math.floor(Math.random() * currentScale.length)];
@@ -827,121 +829,36 @@
     }
 
     function drawWalker(w) {
-      const x = w.x, y = w.groundY;
-      const s = w.step;
-      const swing = Math.sin(s * 0.15) * 8; // leg swing amplitude
+      if (!walkerImg.complete) return;
+
+      const groundY = w.groundY;
+      // SVG original size 219.77 x 326.68, scale to height ~80px
+      const scale = 80 / 326.68;
+      const imgW = 219.77 * scale;
+      const imgH = 326.68 * scale;
 
       ctx.save();
-      // dir=1 → facing right (no flip), dir=-1 → flip horizontally
-      if (w.dir === -1) {
-        ctx.translate(x * 2, 0);
+
+      // subtle bounce while walking
+      const bounce = Math.abs(Math.sin(w.step * 0.15)) * 2;
+
+      // shake on hit
+      const shake = w.hitTimer > 0 ? (Math.random() - 0.5) * 3 : 0;
+
+      if (w.dir === 1) {
+        // facing right: SVG default orientation
+        ctx.drawImage(walkerImg, w.x - imgW / 2 + shake, groundY - imgH + bounce, imgW, imgH);
+      } else {
+        // facing left: flip horizontally
+        ctx.translate(w.x + imgW / 2, 0);
         ctx.scale(-1, 1);
-      }
-
-      // umbrella handle (hand → canopy top)
-      ctx.beginPath();
-      ctx.moveTo(x + 4, y - 28);
-      ctx.lineTo(x + 4, y - 52);
-      ctx.strokeStyle = '#888';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      // umbrella canopy (semicircle)
-      const ux = x + 4, uy = y - 52;
-      ctx.beginPath();
-      ctx.arc(ux, uy, 20, Math.PI, 0);
-      ctx.closePath();
-      ctx.fillStyle = w.umbrellaColor;
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      // coat / skirt (trapezoid, wide hem)
-      ctx.beginPath();
-      ctx.moveTo(x - 6, y - 28);
-      ctx.lineTo(x + 8, y - 28);
-      ctx.lineTo(x + 12, y - 8);
-      ctx.lineTo(x - 10, y - 8);
-      ctx.closePath();
-      ctx.fillStyle = w.color;
-      ctx.fill();
-
-      // legs (from hem)
-      const legY = y - 8;
-      // front leg
-      ctx.beginPath();
-      ctx.moveTo(x, legY);
-      ctx.lineTo(x + swing * 0.5, y + 2);
-      ctx.strokeStyle = '#FFDAB9';
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
-      ctx.stroke();
-      // back leg
-      ctx.beginPath();
-      ctx.moveTo(x + 2, legY);
-      ctx.lineTo(x - swing * 0.5 + 2, y + 2);
-      ctx.stroke();
-
-      // torso (small belly ellipse)
-      ctx.beginPath();
-      ctx.ellipse(x + 1, y - 32, 7, 9, 0, 0, Math.PI * 2);
-      ctx.fillStyle = w.color;
-      ctx.fill();
-
-      // umbrella arm (raised)
-      ctx.beginPath();
-      ctx.moveTo(x + 5, y - 36);
-      ctx.lineTo(x + 4, y - 28);
-      ctx.strokeStyle = '#FFDAB9';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-
-      // free arm (swings with walk)
-      ctx.beginPath();
-      ctx.moveTo(x - 3, y - 36);
-      ctx.lineTo(x - 5 - swing * 0.3, y - 26);
-      ctx.stroke();
-
-      // head (big cute circle)
-      const headShake = w.hitTimer > 0 ? (Math.random() - 0.5) * 3 : 0;
-      ctx.beginPath();
-      ctx.arc(x + 1 + headShake, y - 46, 10, 0, Math.PI * 2);
-      ctx.fillStyle = '#FFDAB9';
-      ctx.fill();
-      ctx.strokeStyle = '#333';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      // big eye (side profile — one eye)
-      ctx.beginPath();
-      ctx.arc(x + 6, y - 47, 3, 0, Math.PI * 2);
-      ctx.fillStyle = '#333';
-      ctx.fill();
-      // eye highlight
-      ctx.beginPath();
-      ctx.arc(x + 7, y - 48, 1, 0, Math.PI * 2);
-      ctx.fillStyle = '#fff';
-      ctx.fill();
-
-      // smile
-      ctx.beginPath();
-      ctx.arc(x + 6, y - 43, 2.5, 0.2, Math.PI - 0.2);
-      ctx.strokeStyle = '#333';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      // hair strands
-      for (let i = 0; i < 3; i++) {
-        ctx.beginPath();
-        ctx.moveTo(x - 2 + i * 3, y - 55);
-        ctx.lineTo(x - 3 + i * 3, y - 58);
-        ctx.strokeStyle = '#333';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+        ctx.drawImage(walkerImg, -imgW / 2 + shake, groundY - imgH + bounce, imgW, imgH);
       }
 
       ctx.restore();
+
+      // update hit timer
+      if (w.hitTimer > 0) w.hitTimer--;
     }
 
     function loop() {
