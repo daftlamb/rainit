@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rain It</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a1a;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      cursor: crosshair;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    #hint {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.25);
+      font-family: monospace;
+      font-size: 12px;
+      pointer-events: none;
+      letter-spacing: 0.1em;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="hint">click to place containers · rain fills them with sound</div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+  <script>
+    // ── Setup ──────────────────────────────────────────────────────────────
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', () => {
+      resize();
+      // rebuild ground
+      Matter.Body.setPosition(ground, { x: canvas.width / 2, y: canvas.height - 80 });
+      Matter.Body.setVertices(ground, Matter.Bodies.rectangle(
+        canvas.width / 2, canvas.height - 80, canvas.width, 4
+      ).vertices);
+    });
+
+    // ── Matter.js ──────────────────────────────────────────────────────────
+    const { Engine, Runner, World, Bodies, Body, Events, Composite } = Matter;
+    const engine = Engine.create({ gravity: { y: 1.5 } });
+    const runner = Runner.create();
+    Runner.run(runner, engine);
+
+    // Ground
+    const ground = Bodies.rectangle(
+      canvas.width / 2, canvas.height - 80,
+      canvas.width, 4,
+      { isStatic: true, label: 'ground', friction: 0.8 }
+    );
+    World.add(engine.world, ground);
+
+    // ── Tone.js synths ─────────────────────────────────────────────────────
+    const synths = {
+      circle:   new Tone.Synth({ oscillator: { type: 'sine'     }, envelope: { attack: 0.01, decay: 0.3, sustain: 0, release: 0.5 } }).toDestination(),
+      square:   new Tone.Synth({ oscillator: { type: 'square'   }, envelope: { attack: 0.01, decay: 0.3, sustain: 0, release: 0.5 } }).toDestination(),
+      triangle: new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.01, decay: 0.3, sustain: 0, release: 0.5 } }).toDestination(),
+    };
+    // Reduce volume a bit
+    Object.values(synths).forEach(s => s.volume.value = -12);
+
+    // Scale notes C4–C6
+    const NOTES = ['C4','D4','E4','F4','G4','A4','B4','C5','D5','E5','F5','G5','A5','B5','C6'];
+
+    function noteForBody(body) {
+      const groundY = canvas.height - 80;
+      const maxH = groundY - 60; // usable height
+      const t = Math.max(0, Math.min(1, 1 - (body.position.y / maxH)));
+      const idx = Math.round(t * (NOTES.length - 1));
+      return NOTES[idx];
+    }
+
+    // ── Container tracking ─────────────────────────────────────────────────
+    const containers = []; // { body, shape }
+    const raindrops  = []; // { body }
+    let shapeIndex = 0;
+    const SHAPES = ['circle', 'square', 'triangle'];
+
+    function addContainer(x, y) {
+      const shape = SHAPES[shapeIndex % SHAPES.length];
+      shapeIndex++;
+      const size = 44 + Math.random() * 16; // 44–60px
+      let body;
+      if (shape === 'circle') {
+        body = Bodies.circle(x, y, size / 2, { restitution: 0.2, friction: 0.6, label: 'container' });
+      } else {
+        // square and triangle both use rectangle physics
+        body = Bodies.rectangle(x, y, size, size, { restitution: 0.2, friction: 0.6, label: 'container' });
+      }
+      body._shape = shape;
+      body._size  = size;
+      World.add(engine.world, body);
+      containers.push({ body, shape, size });
+    }
+
+    // ── Rain spawner ───────────────────────────────────────────────────────
+    function spawnRain() {
+      const x = Math.random() * canvas.width;
+      const drop = Bodies.rectangle(x, -10, 2, 8, {
+        restitution: 0, friction: 0, frictionAir: 0.01,
+        label: 'rain',
+        collisionFilter: { category: 0x0002, mask: 0x0001 | 0x0004 }
+      });
+      drop._born = Date.now();
+      World.add(engine.world, drop);
+      raindrops.push({ body: drop });
+
+      const delay = 300 + Math.random() * 300;
+      setTimeout(spawnRain, delay);
+    }
+
+    // Assign collision categories
+    ground.collisionFilter = { category: 0x0001, mask: 0x0002 | 0x0004 };
+
+    // ── Collision: rain hits container → play note ─────────────────────────
+    const recentHits = new WeakMap(); // throttle per container
+
+    Events.on(engine, 'collisionStart', e => {
+      e.pairs.forEach(pair => {
+        let rain = null, container = null;
+        if (pair.bodyA.label === 'rain' && pair.bodyB.label === 'container') {
+          rain = pair.bodyA; container = pair.bodyB;
+        } else if (pair.bodyB.label === 'rain' && pair.bodyA.label === 'container') {
+          rain = pair.bodyB; container = pair.bodyA;
+        }
+        if (rain && container) {
+          const now = Date.now();
+          const last = recentHits.get(container) || 0;
+          if (now - last > 80) {
+            recentHits.set(container, now);
+            const note  = noteForBody(container);
+            const shape = container._shape || 'circle';
+            try { synths[shape].triggerAttackRelease(note, '16n'); } catch(_) {}
+          }
+          // remove raindrop
+          World.remove(engine.world, rain);
+          const idx = raindrops.findIndex(r => r.body === rain);
+          if (idx !== -1) raindrops.splice(idx, 1);
+        }
+
+        // rain hits ground → remove
+        if (
+          (pair.bodyA.label === 'rain' && pair.bodyB.label === 'ground') ||
+          (pair.bodyB.label === 'rain' && pair.bodyA.label === 'ground')
+        ) {
+          const rain2 = pair.bodyA.label === 'rain' ? pair.bodyA : pair.bodyB;
+          World.remove(engine.world, rain2);
+          const idx = raindrops.findIndex(r => r.body === rain2);
+          if (idx !== -1) raindrops.splice(idx, 1);
+        }
+      });
+    });
+
+    // ── Click → place container ────────────────────────────────────────────
+    canvas.addEventListener('click', async e => {
+      await Tone.start();
+      addContainer(e.clientX, e.clientY);
+    });
+
+    // ── Rendering ──────────────────────────────────────────────────────────
+    function drawBody(body) {
+      const pos = body.position;
+      const angle = body.angle;
+      const shape = body._shape;
+      const size  = body._size || 8;
+
+      ctx.save();
+      ctx.translate(pos.x, pos.y);
+      ctx.rotate(angle);
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+
+      if (shape === 'circle') {
+        ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
+      } else if (shape === 'square') {
+        const h = size / 2;
+        ctx.rect(-h, -h, size, size);
+      } else if (shape === 'triangle') {
+        const r = size / 2;
+        ctx.moveTo(0, -r);
+        ctx.lineTo( r * 0.866,  r * 0.5);
+        ctx.lineTo(-r * 0.866,  r * 0.5);
+        ctx.closePath();
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawRain(body) {
+      const pos = body.position;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y - 4);
+      ctx.lineTo(pos.x, pos.y + 4);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function loop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Ground line
+      const gy = canvas.height - 80;
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(canvas.width, gy);
+      ctx.stroke();
+
+      // Containers
+      containers.forEach(c => drawBody(c.body));
+
+      // Raindrops
+      raindrops.forEach(r => drawRain(r.body));
+
+      requestAnimationFrame(loop);
+    }
+
+    // ── Cleanup stale raindrops (safety net) ──────────────────────────────
+    setInterval(() => {
+      const now = Date.now();
+      for (let i = raindrops.length - 1; i >= 0; i--) {
+        const r = raindrops[i];
+        if (now - r.body._born > 8000 || r.body.position.y > canvas.height + 50) {
+          World.remove(engine.world, r.body);
+          raindrops.splice(i, 1);
+        }
+      }
+    }, 2000);
+
+    // ── Container collision filter ─────────────────────────────────────────
+    // containers need to collide with rain (0x0002) and each other + ground (0x0001)
+    // We patch addContainer to set filters after creation
+    const _origAdd = addContainer;
+    // Override: set collision filter on new containers
+    Events.on(engine, 'afterAdd', e => {
+      if (e.object && e.object.label === 'container') {
+        e.object.collisionFilter = { category: 0x0004, mask: 0x0001 | 0x0002 | 0x0004 };
+      }
+    });
+
+    // ── Start ──────────────────────────────────────────────────────────────
+    spawnRain();
+    loop();
+  </script>
+</body>
+</html>
