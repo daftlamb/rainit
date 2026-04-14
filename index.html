@@ -8,7 +8,7 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      background: #1a1a1a;
+      background: #0a0a0f;
       overflow: hidden;
       width: 100vw;
       height: 100vh;
@@ -30,6 +30,7 @@
       font-size: 12px;
       pointer-events: none;
       letter-spacing: 0.1em;
+      white-space: nowrap;
     }
   </style>
 </head>
@@ -53,6 +54,89 @@
       ctx.scale(dpr, dpr);
     }
     resize();
+
+    // ── Color themes (time + weather) ──────────────────────────────────────
+    const COLOR_THEMES = {
+      morning:  { bg: '#1a1a2e', rain: 'rgba(180,210,255,0.6)' },
+      afternoon:{ bg: '#1a1a1a', rain: 'rgba(255,255,255,0.5)' },
+      evening:  { bg: '#1a0f1a', rain: 'rgba(255,180,220,0.5)' },
+      night:    { bg: '#0a0a0f', rain: 'rgba(150,180,255,0.4)' },
+    };
+
+    function getTimeTheme() {
+      const h = new Date().getHours();
+      if (h >= 6  && h < 12) return 'morning';
+      if (h >= 12 && h < 18) return 'afternoon';
+      if (h >= 18 && h < 22) return 'evening';
+      return 'night';
+    }
+
+    // Parse hex or rgba string → [r,g,b,a]
+    function parseColor(c) {
+      c = c.trim();
+      if (c.startsWith('#')) {
+        const hex = c.slice(1);
+        const r = parseInt(hex.slice(0,2),16);
+        const g = parseInt(hex.slice(2,4),16);
+        const b = parseInt(hex.slice(4,6),16);
+        return [r,g,b,1];
+      }
+      const m = c.match(/rgba?\(([^)]+)\)/);
+      if (m) {
+        const parts = m[1].split(',').map(Number);
+        return [parts[0],parts[1],parts[2], parts[3]??1];
+      }
+      return [26,26,26,1];
+    }
+
+    function lerpColor(a, b, t) {
+      const ca = parseColor(a), cb = parseColor(b);
+      const r = ca[0] + (cb[0]-ca[0])*t;
+      const g = ca[1] + (cb[1]-ca[1])*t;
+      const bl= ca[2] + (cb[2]-ca[2])*t;
+      const al= ca[3] + (cb[3]-ca[3])*t;
+      return `rgba(${r|0},${g|0},${bl|0},${al.toFixed(3)})`;
+    }
+
+    // Weather type: 'sunny' | 'rainy' | 'cloudy' | null
+    let weatherType = null;
+
+    function getTargetBg() {
+      const theme = COLOR_THEMES[getTimeTheme()];
+      let bg = theme.bg;
+      if (weatherType === 'sunny') {
+        // slightly brighter variant
+        const c = parseColor(bg);
+        bg = `rgb(${Math.min(255,(c[0]+18)|0)},${Math.min(255,(c[1]+18)|0)},${Math.min(255,(c[2]+18)|0)})`;
+      } else if (weatherType === 'cloudy') {
+        // desaturate toward grey
+        const c = parseColor(bg);
+        const avg = ((c[0]+c[1]+c[2])/3)|0;
+        bg = `rgb(${((c[0]+avg)/2)|0},${((c[1]+avg)/2)|0},${((c[2]+avg)/2)|0})`;
+      } else if (weatherType === 'rainy') {
+        // darker
+        const c = parseColor(bg);
+        bg = `rgb(${Math.max(0,(c[0]-10)|0)},${Math.max(0,(c[1]-10)|0)},${Math.max(0,(c[2]-10)|0)})`;
+      }
+      return bg;
+    }
+
+    function getTargetRainColor() {
+      return COLOR_THEMES[getTimeTheme()].rain;
+    }
+
+    let currentBg   = COLOR_THEMES[getTimeTheme()].bg;
+    let currentRain = COLOR_THEMES[getTimeTheme()].rain;
+
+    // Update hint position to sit below ground line
+    function updateHintPosition() {
+      const groundY = window.innerHeight - 40;
+      const hint = document.getElementById('hint');
+      hint.style.bottom = '';
+      hint.style.top    = (groundY + 20) + 'px';
+    }
+    updateHintPosition();
+    window.addEventListener('resize', updateHintPosition);
 
     // ── Matter.js ──────────────────────────────────────────────────────────
     const { Engine, Runner, World, Bodies, Body, Events, Composite } = Matter;
@@ -557,7 +641,7 @@
     function drawRain(body) {
       const pos = body.position;
       ctx.save();
-      ctx.strokeStyle = stormMode ? 'rgba(180,220,255,0.7)' : 'rgba(255,255,255,0.55)';
+      ctx.strokeStyle = currentRain;
       ctx.lineWidth   = stormMode ? 2.5 : 1.5;
       ctx.beginPath();
       ctx.moveTo(pos.x, pos.y - 4);
@@ -648,11 +732,20 @@
     }
 
     function loop() {
-      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      // Lerp background and rain colors toward target
+      currentBg   = lerpColor(currentBg,   getTargetBg(),        0.002);
+      currentRain = lerpColor(currentRain, getTargetRainColor(), 0.002);
+
+      // Rainy weather forces storm mode
+      if (weatherType === 'rainy' && !stormMode) stormMode = true;
+
+      // Fill background
+      ctx.fillStyle = currentBg;
+      ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
 
       // Ground line
       const gy = window.innerHeight - 40;
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
       ctx.lineWidth   = 1;
       ctx.beginPath();
       ctx.moveTo(0, gy);
