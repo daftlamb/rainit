@@ -57,10 +57,10 @@
 
     // ── Color themes (time + weather) ──────────────────────────────────────
     const COLOR_THEMES = {
-      morning:  { bg: '#1a1a2e', rain: 'rgba(180,210,255,0.6)' },
-      afternoon:{ bg: '#1a1a1a', rain: 'rgba(255,255,255,0.5)' },
-      evening:  { bg: '#1a0f1a', rain: 'rgba(255,180,220,0.5)' },
-      night:    { bg: '#0a0a0f', rain: 'rgba(150,180,255,0.4)' },
+      morning:  { bg: '#0d1b4b', rain: 'rgba(180,210,255,0.6)' },
+      afternoon:{ bg: '#2d1f0e', rain: 'rgba(255,220,160,0.5)' },
+      evening:  { bg: '#2d0d2d', rain: 'rgba(255,180,220,0.5)' },
+      night:    { bg: '#050510', rain: 'rgba(150,180,255,0.4)' },
     };
 
     function getTimeTheme() {
@@ -68,7 +68,7 @@
       if (h >= 6  && h < 12) return 'morning';
       if (h >= 12 && h < 18) return 'afternoon';
       if (h >= 18 && h < 22) return 'evening';
-      return 'night';
+      return 'night'; // 22~5
     }
 
     // Parse hex or rgba string → [r,g,b,a]
@@ -261,6 +261,7 @@
       const safeY = Math.min(y, window.innerHeight - 100);
       const color  = PALETTE[Math.floor(Math.random() * PALETTE.length)];
       const alpha  = (0.7 + Math.random() * 0.2).toFixed(2);
+      const scaleFactor = Math.min(1, window.innerWidth / 800);
 
       // 40% chance: text object
       if (Math.random() < 0.4) {
@@ -273,7 +274,7 @@
         else                  { charType = 'symbols'; char = pickChar(charPools.symbols); }
         const isHan = charType === 'hanzi';
         const font  = isHan ? 'Noto Sans SC' : 'Outfit';
-        const fontSize = Math.floor(Math.pow(Math.random(), 0.5) * 80 + 40);
+        const fontSize = Math.floor((Math.pow(Math.random(), 0.5) * 80 + 40) * scaleFactor);
         const bw = fontSize * 0.85;
         const bh = fontSize * 1.0;
         const body = Bodies.rectangle(safeX, safeY, bw, bh, {
@@ -300,7 +301,7 @@
       // 60% chance: shape object
       const shape = SHAPES[shapeIndex % SHAPES.length];
       shapeIndex++;
-      const size = 60 + Math.random() * 80;
+      const size = (Math.random() * 80 + 60) * scaleFactor;
       let body;
       if (shape === 'circle') {
         body = Bodies.circle(safeX, safeY, size / 2, {
@@ -324,6 +325,9 @@
       World.add(engine.world, body);
       containers.push({ body, shape, size });
     }
+
+    // ── Splash particles ───────────────────────────────────────────────────
+    let splashes = [];
 
     // ── Storm mode ─────────────────────────────────────────────────────────
     let stormMode = false;
@@ -460,6 +464,11 @@
               scheduleNote(note, shape, null);
             }
           }
+          // splash on container hit
+          const cp1 = pair.collision.supports[0] || rain.position;
+          for (let i = 0; i < 4; i++) {
+            splashes.push({ x: cp1.x, y: cp1.y, vx: (Math.random()-0.5)*3, vy: -Math.random()*3-1, life: 1.0 });
+          }
           World.remove(engine.world, rain);
           const idx = raindrops.findIndex(r => r.body === rain);
           if (idx !== -1) raindrops.splice(idx, 1);
@@ -471,6 +480,11 @@
           (pair.bodyB.label === 'rain' && pair.bodyA.label === 'ground')
         ) {
           const rain2 = pair.bodyA.label === 'rain' ? pair.bodyA : pair.bodyB;
+          // splash on ground hit
+          const cp2 = pair.collision.supports[0] || rain2.position;
+          for (let i = 0; i < 4; i++) {
+            splashes.push({ x: cp2.x, y: cp2.y, vx: (Math.random()-0.5)*3, vy: -Math.random()*3-1, life: 1.0 });
+          }
           World.remove(engine.world, rain2);
           const idx = raindrops.findIndex(r => r.body === rain2);
           if (idx !== -1) raindrops.splice(idx, 1);
@@ -733,8 +747,8 @@
 
     function loop() {
       // Lerp background and rain colors toward target
-      currentBg   = lerpColor(currentBg,   getTargetBg(),        0.002);
-      currentRain = lerpColor(currentRain, getTargetRainColor(), 0.002);
+      currentBg   = lerpColor(currentBg,   getTargetBg(),        0.005);
+      currentRain = lerpColor(currentRain, getTargetRainColor(), 0.005);
 
       // Rainy weather forces storm mode
       if (weatherType === 'rainy' && !stormMode) stormMode = true;
@@ -769,6 +783,19 @@
 
       containers.forEach(c => drawBody(c.body));
       raindrops.forEach(r => drawRain(r.body));
+
+      // Draw splash particles
+      splashes.forEach(s => {
+        s.x += s.vx;
+        s.y += s.vy;
+        s.vy += 0.15;
+        s.life -= 0.08;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 1.5, 0, Math.PI*2);
+        ctx.fillStyle = `rgba(255,255,255,${s.life * 0.6})`;
+        ctx.fill();
+      });
+      splashes = splashes.filter(s => s.life > 0);
 
       drawOverlay();
 
