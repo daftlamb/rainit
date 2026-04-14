@@ -133,7 +133,14 @@
     let shapeIndex = 0;
     const SHAPES  = ['circle', 'square', 'triangle'];
     const PALETTE = ['#FF3366','#FF6B00','#FFD700','#00FF88','#00CFFF','#7B2FFF','#FF2FD4','#FF4444'];
-    const HAN_CHARS = '雨水风云山石木火土金';
+    const charPools = {
+      latin:   'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+      digits:  '0123456789',
+      ascii:   '!@#$%&*?+=-~^<>[]{}|/',
+      hanzi:   '雨水风云山石木火土金日月星河海',
+      symbols: '♦♠♣♥★☆◆◇○●□■△▽'
+    };
+    function pickChar(str) { return str[Math.floor(Math.random() * str.length)]; }
 
     function addContainer(x, y) {
       // [Change 3] Avoid spawning too close to plants
@@ -149,11 +156,15 @@
 
       // 40% chance: text object
       if (Math.random() < 0.4) {
-        const isHan  = Math.random() < 0.3;
-        const char   = isHan
-          ? HAN_CHARS[Math.floor(Math.random() * HAN_CHARS.length)]
-          : String.fromCharCode(65 + Math.floor(Math.random() * 26));
-        const font   = isHan ? 'Noto Sans SC' : 'Outfit';
+        const rand = Math.random();
+        let charType, char;
+        if (rand < 0.25)      { charType = 'latin';   char = pickChar(charPools.latin); }
+        else if (rand < 0.40) { charType = 'hanzi';   char = pickChar(charPools.hanzi); }
+        else if (rand < 0.55) { charType = 'digits';  char = pickChar(charPools.digits); }
+        else if (rand < 0.75) { charType = 'ascii';   char = pickChar(charPools.ascii); }
+        else                  { charType = 'symbols'; char = pickChar(charPools.symbols); }
+        const isHan = charType === 'hanzi';
+        const font  = isHan ? 'Noto Sans SC' : 'Outfit';
         const fontSize = Math.floor(Math.pow(Math.random(), 0.5) * 80 + 40);
         const bw = fontSize * 0.85;
         const bh = fontSize * 1.0;
@@ -168,6 +179,7 @@
         body._color    = color;
         body._alpha    = alpha;
         body._isHan    = isHan;
+        body._charType = charType;
         body._size     = Math.max(bw, bh);
         // [Change 2] Random initial rotation and angular velocity
         Body.setAngle(body, (Math.random() - 0.5) * 0.5);
@@ -284,12 +296,16 @@
       const notes = pendingNotes.splice(0);
       notes.forEach(({ note, shape, textType, isStorm }) => {
         try {
-          if (textType === 'han') {
+          if (textType === 'hanzi') {
             metalSynthHan.triggerAttackRelease('16n');
-          } else if (textType === 'latin') {
+          } else if (textType === 'latin' || textType === 'digits') {
             pluckSynth.triggerAttackRelease(note);
+          } else if (textType === 'ascii' || textType === 'symbols') {
+            // ascii/symbols → FMSynth circle pool (harmonicity:3)
+            const s = poolGet('circle');
+            s.triggerAttackRelease(note, '16n');
           } else {
-            // [Change 5] Use pool instead of new synth
+            // shape containers
             const s = poolGet(shape || 'circle');
             s.triggerAttackRelease(note, '16n');
             if (isStorm) {
@@ -330,7 +346,7 @@
             recentHits.set(container, now);
             const note = noteForBody(container);
             if (container._type === 'text') {
-              scheduleNote(note, null, container._isHan ? 'han' : 'latin');
+              scheduleNote(note, null, container._charType || (container._isHan ? 'hanzi' : 'latin'));
             } else {
               const shape = container._shape || 'circle';
               scheduleNote(note, shape, null);
