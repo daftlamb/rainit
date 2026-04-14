@@ -450,6 +450,66 @@
     }
     spawnPlant();
 
+    // ── Time & Weather overlay ─────────────────────────────────────────────
+    let weatherCache = null; // { icon, temp } or null
+    let lastTimeStr  = '';
+    let lastTimeMin  = -1;
+
+    function getModeLabel() {
+      const h = new Date().getHours();
+      if (h >= 5  && h < 12) return 'pentatonic';
+      if (h >= 12 && h < 17) return 'major';
+      if (h >= 17 && h < 20) return 'dorian';
+      return 'minor';
+    }
+
+    function mapWeatherDesc(desc) {
+      const d = desc.toLowerCase();
+      if (d.includes('sunny') || d.includes('clear'))  return '☀️';
+      if (d.includes('cloud') || d.includes('overcast')) return '☁️';
+      if (d.includes('rain') || d.includes('drizzle')) return '🌧';
+      if (d.includes('snow') || d.includes('blizzard')) return '❄️';
+      return '🌤';
+    }
+
+    (async function fetchWeather() {
+      try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 4000);
+        const res  = await fetch('https://wttr.in/?format=j1', { signal: controller.signal });
+        clearTimeout(tid);
+        const data = await res.json();
+        const cond = data.current_condition[0];
+        const icon = mapWeatherDesc(cond.weatherDesc[0].value);
+        const temp = cond.temp_C;
+        weatherCache = { icon, temp };
+      } catch(_) { /* fail silently */ }
+    })();
+
+    function drawOverlay() {
+      const now = new Date();
+      const min = now.getMinutes();
+      if (min !== lastTimeMin) {
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(min).padStart(2, '0');
+        lastTimeStr = `${hh}:${mm}`;
+        lastTimeMin = min;
+      }
+      const mode = getModeLabel();
+      const line2 = weatherCache
+        ? `${mode} · ${weatherCache.icon} ${weatherCache.temp}°C`
+        : mode;
+
+      ctx.save();
+      ctx.font         = "100 12px 'Outfit', sans-serif";
+      ctx.fillStyle    = 'rgba(255,255,255,0.5)';
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(lastTimeStr, 20, 30);
+      ctx.fillText(line2,       20, 48);
+      ctx.restore();
+    }
+
     // ── Rendering ──────────────────────────────────────────────────────────
     function drawBody(body) {
       const pos   = body.position;
@@ -616,6 +676,8 @@
 
       containers.forEach(c => drawBody(c.body));
       raindrops.forEach(r => drawRain(r.body));
+
+      drawOverlay();
 
       requestAnimationFrame(loop);
     }
