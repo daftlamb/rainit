@@ -584,24 +584,44 @@
           // ── Walker umbrella / body hit check ──────────────────────────
           if (walker) {
             const rx = rain2.position.x, ry = rain2.position.y;
-            // umbrella center (matches articulated walker drawWalker)
-            const ux = walker.x;
-            const uy = walker.groundY - 37.9 - 53.2 - 10; // bodyH + umbrellaH
-            const distU = Math.hypot(rx - ux, ry - uy);
-            if (distU < 28) {
-              // rain hit umbrella → pluck note + splashes
-              try {
-                const midi = currentScale[Math.floor(Math.random() * currentScale.length)];
-                const note = Tone.Frequency(midi, 'midi').toNote();
-                pluckSynth.triggerAttackRelease(note);
-              } catch(_) {}
-              for (let i = 0; i < 3; i++) {
-                splashes.push({ x: rx, y: ry, vx: (Math.random()-0.5)*3, vy: -Math.random()*2-1, life: 1.0 });
-              }
-            } else {
-              // body hit check (14×24 rect around head+torso)
-              const bx = walker.x, by = walker.y - 28;
-              if (Math.abs(rx - bx) < 7 && ry > by - 7 && ry < by + 24) {
+            // Recompute walker geometry (mirrors drawWalker, sc=0.32)
+            const sc = 0.32;
+            const bW = 55.5*sc, bH = 118.35*sc;
+            const aLW = 179.22*sc, aLH = 214.49*sc;
+            const lLH = 145.29*sc;
+            const bounce = walker.angles ? (walker.angles.bounce || 0) : 0;
+            const cx = walker.x;
+            const gY = walker.groundY;
+            const bodyTop = gY - lLH - bH * 0.85 + bounce;
+            // arm_left pivot (holds umbrella)
+            const armPivotX = cx - bW*0.3;
+            const armPivotY = bodyTop + bH*0.1;
+            // umbrella top edge = pivot - aLH*0.537
+            const umbrellaTop = armPivotY - aLH*0.537;
+            // umbrella left edge = pivot - aLW*0.7265 (1 - 0.2735)
+            const umbrellaLeft = armPivotX - aLW*0.7265;
+            // umbrella right edge = pivot + aLW*0.2735 (roughly)
+            const umbrellaRight = armPivotX + aLW*0.2735;
+            // full bounding box: umbrella top → feet, umbrella left → body right
+            const bbTop    = umbrellaTop;
+            const bbBottom = gY;
+            const bbLeft   = umbrellaLeft;
+            const bbRight  = Math.max(umbrellaRight, cx + bW*0.5);
+
+            if (rx >= bbLeft && rx <= bbRight && ry >= bbTop && ry <= bbBottom) {
+              // determine if rain hit umbrella zone (above bodyTop) or body zone
+              if (ry < bodyTop) {
+                // rain hit umbrella → pluck note + splashes
+                try {
+                  const midi = currentScale[Math.floor(Math.random() * currentScale.length)];
+                  const note = Tone.Frequency(midi, 'midi').toNote();
+                  pluckSynth.triggerAttackRelease(note);
+                } catch(_) {}
+                for (let i = 0; i < 3; i++) {
+                  splashes.push({ x: rx, y: ry, vx: (Math.random()-0.5)*3, vy: -Math.random()*2-1, life: 1.0 });
+                }
+              } else {
+                // rain hit body/legs
                 walker.hitTimer = 10;
                 playHitSound();
               }
