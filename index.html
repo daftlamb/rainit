@@ -329,6 +329,50 @@
     // ── Splash particles ───────────────────────────────────────────────────
     let splashes = [];
 
+    // ── Walker (umbrella person) ───────────────────────────────────────────
+    let walker = null;
+    let walkerNextSpawn = Date.now() + (15 + Math.random() * 15) * 1000;
+
+    // ahSynth for body hit sound (lazy-init after Tone.start)
+    let ahSynth = null;
+    function getAhSynth() {
+      if (!ahSynth) {
+        try {
+          ahSynth = new Tone.Synth({
+            oscillator: { type: 'sine' },
+            envelope: { attack: 0.05, decay: 0.1, sustain: 0.6, release: 0.8 }
+          }).connect(reverb);
+        } catch(_) {}
+      }
+      return ahSynth;
+    }
+
+    function spawnWalker() {
+      const groundY = window.innerHeight - 40;
+      const dir = Math.random() < 0.5 ? 1 : -1;
+      const x = dir === 1 ? -30 : window.innerWidth + 30;
+      const speed = 0.8 + Math.random() * 0.7;
+      const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+      const uc = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+      walker = { x, y: groundY, dir, speed, step: 0, color, umbrellaColor: uc, hitTimer: 0 };
+    }
+
+    function updateWalker() {
+      if (!walker) {
+        if (Date.now() >= walkerNextSpawn) spawnWalker();
+        return;
+      }
+      walker.x += walker.dir * walker.speed;
+      walker.step++;
+      if (walker.hitTimer > 0) walker.hitTimer--;
+      // off-screen → remove, schedule next
+      if ((walker.dir === 1 && walker.x > window.innerWidth + 50) ||
+          (walker.dir === -1 && walker.x < -50)) {
+        walker = null;
+        walkerNextSpawn = Date.now() + (15 + Math.random() * 15) * 1000;
+      }
+    }
+
     // ── Storm mode ─────────────────────────────────────────────────────────
     let stormMode = false;
 
@@ -485,6 +529,40 @@
           for (let i = 0; i < 4; i++) {
             splashes.push({ x: cp2.x, y: cp2.y, vx: (Math.random()-0.5)*3, vy: -Math.random()*3-1, life: 1.0 });
           }
+
+          // ── Walker umbrella / body hit check ──────────────────────────
+          if (walker) {
+            const rx = rain2.position.x, ry = rain2.position.y;
+            // umbrella center
+            const ux = walker.x, uy = walker.y - 42;
+            const distU = Math.hypot(rx - ux, ry - uy);
+            if (distU < 20) {
+              // rain hit umbrella → pluck note + splashes
+              try {
+                const midi = currentScale[Math.floor(Math.random() * currentScale.length)];
+                const note = Tone.Frequency(midi, 'midi').toNote();
+                pluckSynth.triggerAttackRelease(note);
+              } catch(_) {}
+              for (let i = 0; i < 3; i++) {
+                splashes.push({ x: rx, y: ry, vx: (Math.random()-0.5)*3, vy: -Math.random()*2-1, life: 1.0 });
+              }
+            } else {
+              // body hit check (14×24 rect around head+torso)
+              const bx = walker.x, by = walker.y - 28;
+              if (Math.abs(rx - bx) < 7 && ry > by - 7 && ry < by + 24) {
+                walker.hitTimer = 10;
+                try {
+                  const syn = getAhSynth();
+                  if (syn) {
+                    const ahNotes = ['A3','B3','C4','D4','E4','F4','G4','A4'];
+                    syn.triggerAttackRelease(ahNotes[Math.floor(Math.random()*ahNotes.length)], '0.3');
+                  }
+                } catch(_) {}
+              }
+            }
+          }
+          // ─────────────────────────────────────────────────────────────
+
           World.remove(engine.world, rain2);
           const idx = raindrops.findIndex(r => r.body === rain2);
           if (idx !== -1) raindrops.splice(idx, 1);
@@ -745,6 +823,90 @@
       ctx.restore();
     }
 
+    function drawWalker(w) {
+      const { x, y, dir, step, color, umbrellaColor, hitTimer } = w;
+      const swing = Math.sin(step * 0.15);
+      const headShake = hitTimer > 0 ? (Math.random() * 4 - 2) : 0;
+
+      ctx.save();
+      // flip for direction: dir=1 faces right (default), dir=-1 flip
+      if (dir === -1) {
+        ctx.translate(x, 0);
+        ctx.scale(-1, 1);
+        ctx.translate(-x, 0);
+      }
+
+      // umbrella (above head)
+      const ux = x, uy = y - 42;
+      ctx.beginPath();
+      ctx.arc(ux, uy, 18, Math.PI, 0);
+      ctx.closePath();
+      ctx.fillStyle = umbrellaColor + 'aa';
+      ctx.fill();
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      // umbrella handle
+      ctx.beginPath();
+      ctx.moveTo(ux, uy);
+      ctx.lineTo(ux, uy + 22);
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // arm holding umbrella (right arm up)
+      ctx.beginPath();
+      ctx.moveTo(x + 4, y - 20);
+      ctx.lineTo(x + 2, y - 36);
+      ctx.strokeStyle = '#FFDAB9';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // arm swinging (left arm)
+      ctx.beginPath();
+      ctx.moveTo(x - 4, y - 20);
+      ctx.lineTo(x - 8 + swing * 4, y - 10 + swing * 3);
+      ctx.strokeStyle = '#FFDAB9';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // body (ellipse)
+      ctx.beginPath();
+      ctx.ellipse(x, y - 16, 7, 10, 0, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // legs
+      const leg1x = swing > 0 ? x - 6 : x + 2;
+      const leg2x = swing > 0 ? x + 6 : x - 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y - 6);
+      ctx.lineTo(leg1x, y + 10);
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, y - 6);
+      ctx.lineTo(leg2x, y + 10);
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // head
+      ctx.beginPath();
+      ctx.arc(x + headShake, y - 28, 7, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFDAB9';
+      ctx.fill();
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
     function loop() {
       // Lerp background and rain colors toward target
       currentBg   = lerpColor(currentBg,   getTargetBg(),        0.005);
@@ -796,6 +958,10 @@
         ctx.fill();
       });
       splashes = splashes.filter(s => s.life > 0);
+
+      // Walker update + draw
+      updateWalker();
+      if (walker) drawWalker(walker);
 
       drawOverlay();
 
