@@ -96,13 +96,13 @@
     const raindrops  = []; // { body }
     let shapeIndex = 0;
     const SHAPES = ['circle', 'square', 'triangle'];
-    const PALETTE = ['#e8c547','#e87d47','#47a8e8','#47e8a8','#e847a8','#a847e8','#e84747','#47e847'];
+    const PALETTE = ['#FF3366','#FF6B00','#FFD700','#00FF88','#00CFFF','#7B2FFF','#FF2FD4','#FF4444'];
 
     function addContainer(x, y) {
       const shape = SHAPES[shapeIndex % SHAPES.length];
       shapeIndex++;
-      // Random size: 30–70px (radius 15–35 for circle)
-      const size = 30 + Math.random() * 40;
+      // Random size: 60–140px (radius 30–70 for circle)
+      const size = 60 + Math.random() * 80;
       // Clamp y so objects don't spawn below ground
       const safeY = Math.min(y, canvas.height - 100);
       // Random color with opacity 0.7–0.9
@@ -144,6 +144,24 @@
       setTimeout(spawnRain, delay);
     }
 
+    // ── Chord mechanism ────────────────────────────────────────────────────
+    let pendingNotes = []; // { note, shape }
+    let chordTimer = null;
+
+    function flushChord() {
+      const notes = pendingNotes.splice(0);
+      notes.forEach(({ note, shape }) => {
+        try { synths[shape].triggerAttackRelease(note, '16n'); } catch(_) {}
+      });
+      chordTimer = null;
+    }
+
+    function scheduleNote(note, shape) {
+      pendingNotes.push({ note, shape });
+      if (chordTimer) clearTimeout(chordTimer);
+      chordTimer = setTimeout(flushChord, 100);
+    }
+
     // ── Collision: rain hits container → play note ─────────────────────────
     const recentHits = new WeakMap(); // throttle per container
 
@@ -162,7 +180,7 @@
             recentHits.set(container, now);
             const note  = noteForBody(container);
             const shape = container._shape || 'circle';
-            try { synths[shape].triggerAttackRelease(note, '16n'); } catch(_) {}
+            scheduleNote(note, shape);
           }
           // remove raindrop
           World.remove(engine.world, rain);
@@ -216,14 +234,11 @@
         ctx.closePath();
       }
 
-      // Fill with color + alpha
+      // Fill with color + alpha, no stroke
       ctx.globalAlpha = parseFloat(alpha);
       ctx.fillStyle = color;
       ctx.fill();
       ctx.globalAlpha = 1;
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
       ctx.restore();
     }
 
