@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Rain It</title>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700&family=Noto+Sans+SC:wght@700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100;700&family=Noto+Sans+SC:wght@700&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -25,7 +25,8 @@
       left: 50%;
       transform: translateX(-50%);
       color: rgba(255,255,255,0.25);
-      font-family: monospace;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 100;
       font-size: 12px;
       pointer-events: none;
       letter-spacing: 0.1em;
@@ -44,8 +45,12 @@
     const ctx = canvas.getContext('2d');
 
     function resize() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      canvas.style.width = window.innerWidth + 'px';
+      canvas.style.height = window.innerHeight + 'px';
+      ctx.scale(dpr, dpr);
     }
     resize();
 
@@ -58,18 +63,18 @@
 
     // Boundaries (ground + walls)
     const ground = Bodies.rectangle(
-      canvas.width / 2, canvas.height - 40,
-      canvas.width, 20,
+      window.innerWidth / 2, window.innerHeight - 40,
+      window.innerWidth, 20,
       { isStatic: true, label: 'ground', friction: 0.8 }
     );
-    const wallL = Bodies.rectangle(-25, canvas.height / 2, 50, canvas.height * 2, { isStatic: true, label: 'wall' });
-    const wallR = Bodies.rectangle(canvas.width + 25, canvas.height / 2, 50, canvas.height * 2, { isStatic: true, label: 'wall' });
+    const wallL = Bodies.rectangle(-25, window.innerHeight / 2, 50, window.innerHeight * 2, { isStatic: true, label: 'wall' });
+    const wallR = Bodies.rectangle(window.innerWidth + 25, window.innerHeight / 2, 50, window.innerHeight * 2, { isStatic: true, label: 'wall' });
     World.add(engine.world, [ground, wallL, wallR]);
 
     window.addEventListener('resize', () => {
       resize();
-      Body.setPosition(ground, { x: canvas.width / 2, y: canvas.height - 40 });
-      Body.setPosition(wallR, { x: canvas.width + 25, y: canvas.height / 2 });
+      Body.setPosition(ground, { x: window.innerWidth / 2, y: window.innerHeight - 40 });
+      Body.setPosition(wallR, { x: window.innerWidth + 25, y: window.innerHeight / 2 });
     });
 
     // ── Tone.js synth pools ────────────────────────────────────────────────
@@ -108,18 +113,37 @@
     }).connect(reverb);
     padSynth.volume.value = -10;
 
-    // Scale notes C4–C6
-    const NOTES = ['C4','D4','E4','F4','G4','A4','B4','C5','D5','E5','F5','G5','A5','B5','C6'];
-    // Pad notes C3–C5
-    const PAD_NOTES = ['C3','E3','G3','B3','C4','E4','G4','B4','C5'];
+    // Time-based scale selection
+    const hour = new Date().getHours();
+    let currentScale;
+    if (hour >= 6 && hour <= 11) {
+      currentScale = [60,62,64,67,69,72,74,76]; // morning: pentatonic major
+    } else if (hour >= 12 && hour <= 17) {
+      currentScale = [60,62,64,65,67,69,71,72]; // afternoon: natural major
+    } else if (hour >= 18 && hour <= 21) {
+      currentScale = [60,62,63,65,67,69,70,72]; // evening: dorian
+    } else {
+      currentScale = [60,62,63,65,67,68,70,72]; // night: natural minor
+    }
+
+    function midiToNote(midi) {
+      const notes = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+      const octave = Math.floor(midi / 12) - 1;
+      return notes[midi % 12] + octave;
+    }
+
+    function getNote(yPos) {
+      const idx = Math.floor((1 - yPos / window.innerHeight) * currentScale.length);
+      const midi = currentScale[Math.max(0, Math.min(idx, currentScale.length - 1))];
+      return midiToNote(midi);
+    }
 
     function noteForBody(body) {
-      const groundY = canvas.height - 40;
-      const maxH = groundY - 60;
-      const t = Math.max(0, Math.min(1, 1 - (body.position.y / maxH)));
-      const idx = Math.round(t * (NOTES.length - 1));
-      return NOTES[idx];
+      return getNote(body.position.y);
     }
+
+    // Pad notes C3–C5
+    const PAD_NOTES = ['C3','E3','G3','B3','C4','E4','G4','B4','C5'];
 
     function padNoteForHeight(h) {
       // h: 20–100 → PAD_NOTES index
@@ -150,7 +174,7 @@
           safeX += safeX < p.x ? -70 : 70;
         }
       }
-      const safeY = Math.min(y, canvas.height - 100);
+      const safeY = Math.min(y, window.innerHeight - 100);
       const color  = PALETTE[Math.floor(Math.random() * PALETTE.length)];
       const alpha  = (0.7 + Math.random() * 0.2).toFixed(2);
 
@@ -269,7 +293,7 @@
 
     // ── Rain spawner ───────────────────────────────────────────────────────
     function spawnRain() {
-      const x = Math.random() * canvas.width;
+      const x = Math.random() * window.innerWidth;
       const w = stormMode ? 3 : 2;
       const drop = Bodies.rectangle(x, -10, w, 8, {
         restitution: 0, friction: 0, frictionAir: 0.01,
@@ -392,8 +416,8 @@
       const delay = (8 + Math.random() * 7) * 1000;
       setTimeout(() => {
         if (plants.length < 3) {
-          const groundY = canvas.height - 40;
-          const x = 40 + Math.random() * (canvas.width - 80);
+          const groundY = window.innerHeight - 40;
+          const x = 40 + Math.random() * (window.innerWidth - 80);
           const type = Math.random() < 0.5 ? 'grass' : 'flower';
           const color = type === 'grass' ? '#7FD47F' : PALETTE[Math.floor(Math.random() * PALETTE.length)];
           // [Change 3] Initial height 20–40px
@@ -537,7 +561,7 @@
 
     function drawWindIndicator() {
       if (Math.abs(windForce) < 0.0002) return;
-      const cx     = canvas.width / 2;
+      const cx     = window.innerWidth / 2;
       const cy     = 22;
       const maxLen = 60;
       const len    = Math.abs(windForce) / 0.002 * maxLen;
@@ -564,15 +588,15 @@
     }
 
     function loop() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
       // Ground line
-      const gy = canvas.height - 40;
+      const gy = window.innerHeight - 40;
       ctx.strokeStyle = 'rgba(255,255,255,0.35)';
       ctx.lineWidth   = 1;
       ctx.beginPath();
       ctx.moveTo(0, gy);
-      ctx.lineTo(canvas.width, gy);
+      ctx.lineTo(window.innerWidth, gy);
       ctx.stroke();
 
       drawWindIndicator();
@@ -602,7 +626,7 @@
       const now = Date.now();
       for (let i = raindrops.length - 1; i >= 0; i--) {
         const r = raindrops[i];
-        if (now - r.body._born > 8000 || r.body.position.y > canvas.height + 50) {
+        if (now - r.body._born > 8000 || r.body.position.y > window.innerHeight + 50) {
           World.remove(engine.world, r.body);
           raindrops.splice(i, 1);
         }
@@ -613,7 +637,7 @@
       // Remove any raindrop bodies that escaped off-screen
       const bodies = Composite.allBodies(engine.world);
       bodies.forEach(b => {
-        if (b.label === 'rain' && b.position.y > canvas.height + 100) {
+        if (b.label === 'rain' && b.position.y > window.innerHeight + 100) {
           World.remove(engine.world, b);
           const idx = raindrops.findIndex(r => r.body === b);
           if (idx !== -1) raindrops.splice(idx, 1);
