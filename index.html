@@ -47,28 +47,29 @@
       canvas.height = window.innerHeight;
     }
     resize();
-    window.addEventListener('resize', () => {
-      resize();
-      // rebuild ground
-      Matter.Body.setPosition(ground, { x: canvas.width / 2, y: canvas.height - 80 });
-      Matter.Body.setVertices(ground, Matter.Bodies.rectangle(
-        canvas.width / 2, canvas.height - 80, canvas.width, 4
-      ).vertices);
-    });
 
     // ── Matter.js ──────────────────────────────────────────────────────────
     const { Engine, Runner, World, Bodies, Body, Events, Composite } = Matter;
-    const engine = Engine.create({ gravity: { y: 1.5 } });
+    const engine = Engine.create();
+    engine.gravity.y = 1;
     const runner = Runner.create();
     Runner.run(runner, engine);
 
-    // Ground
+    // Boundaries (ground + walls)
     const ground = Bodies.rectangle(
-      canvas.width / 2, canvas.height - 80,
-      canvas.width, 4,
+      canvas.width / 2, canvas.height - 40,
+      canvas.width, 20,
       { isStatic: true, label: 'ground', friction: 0.8 }
     );
-    World.add(engine.world, ground);
+    const wallL = Bodies.rectangle(-25, canvas.height / 2, 50, canvas.height * 2, { isStatic: true, label: 'wall', collisionFilter: { category: 0x0001, mask: 0x0002 | 0x0004 } });
+    const wallR = Bodies.rectangle(canvas.width + 25, canvas.height / 2, 50, canvas.height * 2, { isStatic: true, label: 'wall', collisionFilter: { category: 0x0001, mask: 0x0002 | 0x0004 } });
+    World.add(engine.world, [ground, wallL, wallR]);
+
+    window.addEventListener('resize', () => {
+      resize();
+      Body.setPosition(ground, { x: canvas.width / 2, y: canvas.height - 40 });
+      Body.setPosition(wallR, { x: canvas.width + 25, y: canvas.height / 2 });
+    });
 
     // ── Tone.js synths ─────────────────────────────────────────────────────
     const synths = {
@@ -83,7 +84,7 @@
     const NOTES = ['C4','D4','E4','F4','G4','A4','B4','C5','D5','E5','F5','G5','A5','B5','C6'];
 
     function noteForBody(body) {
-      const groundY = canvas.height - 80;
+      const groundY = canvas.height - 40;
       const maxH = groundY - 60; // usable height
       const t = Math.max(0, Math.min(1, 1 - (body.position.y / maxH)));
       const idx = Math.round(t * (NOTES.length - 1));
@@ -223,7 +224,7 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Ground line
-      const gy = canvas.height - 80;
+      const gy = canvas.height - 40;
       ctx.strokeStyle = 'rgba(255,255,255,0.35)';
       ctx.lineWidth = 1;
       ctx.beginPath();
