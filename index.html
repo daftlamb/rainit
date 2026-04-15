@@ -34,9 +34,19 @@
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    #three-canvas {
+      position: fixed;
+      top: 0; left: 0;
+      pointer-events: none;
+      z-index: 1;
+    }
+  </style>
 </head>
 <body>
   <canvas id="c"></canvas>
+  <canvas id="three-canvas"></canvas>
   <div id="hint">click to place containers · rain fills them with sound</div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
@@ -160,6 +170,83 @@
       resize();
       Body.setPosition(ground, { x: window.innerWidth / 2, y: window.innerHeight - 40 });
       Body.setPosition(wallR, { x: window.innerWidth + 25, y: window.innerHeight / 2 });
+    });
+
+    // ── Three.js 3D overlay ────────────────────────────────────────────────
+    const threeCanvas = document.getElementById('three-canvas');
+    const threeRenderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: true, antialias: true });
+    threeRenderer.setPixelRatio(window.devicePixelRatio);
+    threeRenderer.setSize(window.innerWidth, window.innerHeight);
+    threeRenderer.setClearColor(0x000000, 0);
+
+    const threeScene = new THREE.Scene();
+
+    // Orthographic camera matching 2D canvas: origin top-left, y-down
+    // left=0, right=W, top=0, bottom=H maps screen coords directly
+    let threeCamera = new THREE.OrthographicCamera(
+      0, window.innerWidth,
+      0, window.innerHeight,
+      -1000, 1000
+    );
+    threeCamera.position.z = 500;
+
+    // Lights
+    threeScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(1, -1, 1).normalize();
+    threeScene.add(dirLight);
+
+    // 3-step toon gradient texture
+    function makeToonGradient() {
+      const data = new Uint8Array([80, 160, 255]);
+      const tex = new THREE.DataTexture(data, 3, 1, THREE.LuminanceFormat);
+      tex.needsUpdate = true;
+      return tex;
+    }
+    const toonGradient = makeToonGradient();
+
+    // Create a Three.js mesh for a container body
+    function createMeshForBody(body) {
+      const shape = body._shape;
+      const size  = body._size || 40;
+      const depth = size * 0.6;
+      let geo;
+
+      if (shape === 'circle') {
+        const r = size / 2;
+        geo = new THREE.CylinderGeometry(r, r, depth, 32);
+        // Rotate cylinder so flat face points toward camera (z-axis)
+        geo.rotateX(Math.PI / 2);
+      } else if (shape === 'square') {
+        geo = new THREE.BoxGeometry(size, size, depth);
+      } else if (shape === 'triangle') {
+        const r = size / 2;
+        const triShape = new THREE.Shape();
+        triShape.moveTo(0, -r);
+        triShape.lineTo(r * 0.866, r * 0.5);
+        triShape.lineTo(-r * 0.866, r * 0.5);
+        triShape.closePath();
+        geo = new THREE.ExtrudeGeometry(triShape, { depth: depth, bevelEnabled: false });
+        // Center the extruded geometry on z
+        geo.translate(0, 0, -depth / 2);
+      } else {
+        return null;
+      }
+
+      const color = body._color || '#47a8e8';
+      const mat = new THREE.MeshToonMaterial({ color: new THREE.Color(color), gradientMap: toonGradient });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh._wobbleOffset = Math.random() * Math.PI * 2;
+      threeScene.add(mesh);
+      return mesh;
+    }
+
+    // Update Three.js camera + renderer on window resize
+    window.addEventListener('resize', () => {
+      threeCamera.right  = window.innerWidth;
+      threeCamera.bottom = window.innerHeight;
+      threeCamera.updateProjectionMatrix();
+      threeRenderer.setSize(window.innerWidth, window.innerHeight);
     });
 
     // ── Tone.js synth pools ────────────────────────────────────────────────
@@ -325,6 +412,8 @@
       Body.setAngle(body, (Math.random() - 0.5) * 0.5);
       Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.3);
       World.add(engine.world, body);
+      // Create Three.js mesh for this shape body
+      body._mesh = createMeshForBody(body);
       containers.push({ body, shape, size });
     }
 
@@ -777,25 +866,8 @@
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(body._char, 0, 0);
-      } else {
-        const shape = body._shape;
-        const size  = body._size || 8;
-        ctx.beginPath();
-        if (shape === 'circle') {
-          ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
-        } else if (shape === 'square') {
-          const h = size / 2;
-          ctx.rect(-h, -h, size, size);
-        } else if (shape === 'triangle') {
-          const r = size / 2;
-          ctx.moveTo(0, -r);
-          ctx.lineTo( r * 0.866,  r * 0.5);
-          ctx.lineTo(-r * 0.866,  r * 0.5);
-          ctx.closePath();
-        }
-        ctx.fillStyle = color;
-        ctx.fill();
       }
+      // Non-text shapes are rendered by Three.js 3D overlay — skip 2D canvas draw
 
       ctx.globalAlpha = 1;
       ctx.restore();
@@ -1003,6 +1075,19 @@
       containers.forEach(c => drawBody(c.body));
       raindrops.forEach(r => drawRain(r.body));
 
+      // Sync Three.js meshes with Matter.js body positions
+      const now3 = Date.now();
+      containers.forEach(c => {
+        const body = c.body;
+        const mesh = body._mesh;
+        if (!mesh) return;
+        mesh.position.x = body.position.x;
+        mesh.position.y = body.position.y;
+        mesh.rotation.z = -body.angle;
+        mesh.rotation.x = Math.sin(now3 * 0.002 + mesh._wobbleOffset) * 0.15;
+        mesh.rotation.y = Math.cos(now3 * 0.0015 + mesh._wobbleOffset) * 0.1;
+      });
+
       // Draw splash particles
       splashes.forEach(s => {
         s.x += s.vx;
@@ -1021,6 +1106,9 @@
       if (walker) drawWalker(walker);
 
       drawOverlay();
+
+      // Render Three.js 3D overlay after 2D canvas
+      threeRenderer.render(threeScene, threeCamera);
 
       requestAnimationFrame(loop);
     }
